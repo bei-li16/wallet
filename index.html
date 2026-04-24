@@ -1305,6 +1305,13 @@ var Vr={},Br={};var Fr=function(){function t(t,e,n){var i=this;this._sleepAfterS
       '其他': { icon: '📦', color: '#6b7280' }
     };
 
+    // Color palette for subcategories
+    const SUBCATEGORY_COLORS = [
+      '#f59e0b', '#3b82f6', '#ec4899', '#8b5cf6', '#10b981', '#ef4444',
+      '#06b6d4', '#84cc16', '#f97316', '#6366f1', '#14b8a6', '#eab308',
+      '#a855f7', '#22c55e', '#0ea5e9', '#d946ef', '#64748b', '#fb923c'
+    ];
+
     const DEFAULT_SUBCATEGORIES = {
       '餐饮': ['早餐', '午餐', '晚餐', '零食', '饮料'],
       '交通': ['打车', '公交', '地铁', '加油', '保险', '停车'],
@@ -1502,7 +1509,16 @@ var Vr={},Br={};var Fr=function(){function t(t,e,n){var i=this;this._sleepAfterS
           }
 
           return expenses.value
-            .filter(e => e.date >= start && e.date <= end)
+            .filter(e => {
+              if (e.date >= start && e.date <= end) {
+                // Filter by category if in drill-down mode
+                if (reportCategory.value !== '总消费') {
+                  return e.category === reportCategory.value;
+                }
+                return true;
+              }
+              return false;
+            })
             .reduce((sum, e) => sum + e.amount, 0);
         });
 
@@ -1550,7 +1566,16 @@ var Vr={},Br={};var Fr=function(){function t(t,e,n){var i=this;this._sleepAfterS
           }
 
           return expenses.value
-            .filter(e => e.date >= start && e.date <= end)
+            .filter(e => {
+              if (e.date >= start && e.date <= end) {
+                // Filter by category if in drill-down mode
+                if (reportCategory.value !== '总消费') {
+                  return e.category === reportCategory.value;
+                }
+                return true;
+              }
+              return false;
+            })
             .reduce((sum, e) => sum + e.amount, 0);
         });
 
@@ -2054,6 +2079,14 @@ var Vr={},Br={};var Fr=function(){function t(t,e,n){var i=this;this._sleepAfterS
           const firstDate = dayjs(sorted[0].date);
           const lastDate = dayjs(sorted[sorted.length - 1].date);
 
+          // Determine if we're in drill-down mode
+          const isDrilldown = reportCategory.value !== '总消费';
+          const targetCategory = reportCategory.value;
+          const subCats = isDrilldown ? (subcategories.value[targetCategory] || []) : [];
+          const displayItems = isDrilldown
+            ? subCats.map((sub, idx) => ({ name: sub, color: SUBCATEGORY_COLORS[idx % SUBCATEGORY_COLORS.length] }))
+            : categories.map(c => ({ name: c.name, color: c.color }));
+
           if (reportGranularity.value === 'month') {
             const labels = [];
             const dataMap = {};
@@ -2062,8 +2095,8 @@ var Vr={},Br={};var Fr=function(){function t(t,e,n){var i=this;this._sleepAfterS
             while (current.isBefore(lastDate) || current.isSame(lastDate)) {
               const key = current.format('YYYY-MM');
               labels.push(key);
-              categories.forEach(c => {
-                if (!dataMap[c.name]) dataMap[c.name] = [];
+              displayItems.forEach(item => {
+                if (!dataMap[item.name]) dataMap[item.name] = [];
               });
               current = current.add(1, 'month');
             }
@@ -2072,9 +2105,13 @@ var Vr={},Br={};var Fr=function(){function t(t,e,n){var i=this;this._sleepAfterS
               const key = dayjs(e.date).format('YYYY-MM');
               const idx = labels.indexOf(key);
               if (idx !== -1) {
-                categories.forEach(c => {
-                  if (e.category === c.name) {
-                    dataMap[c.name][idx] = (dataMap[c.name][idx] || 0) + e.amount;
+                displayItems.forEach(item => {
+                  if (isDrilldown) {
+                    if (e.category === targetCategory && e.subcategory === item.name) {
+                      dataMap[item.name][idx] = (dataMap[item.name][idx] || 0) + e.amount;
+                    }
+                  } else if (e.category === item.name) {
+                    dataMap[item.name][idx] = (dataMap[item.name][idx] || 0) + e.amount;
                   }
                 });
               }
@@ -2082,10 +2119,10 @@ var Vr={},Br={};var Fr=function(){function t(t,e,n){var i=this;this._sleepAfterS
 
             return {
               labels,
-              datasets: categories.map(c => ({
-                name: c.name,
-                data: dataMap[c.name] || [],
-                itemStyle: { color: c.color }
+              datasets: displayItems.map(item => ({
+                name: item.name,
+                data: dataMap[item.name] || [],
+                itemStyle: { color: item.color }
               }))
             };
           } else {
@@ -2096,8 +2133,8 @@ var Vr={},Br={};var Fr=function(){function t(t,e,n){var i=this;this._sleepAfterS
             while (current.isBefore(lastDate) || current.isSame(lastDate)) {
               const key = current.format('YYYY');
               labels.push(key);
-              categories.forEach(c => {
-                if (!dataMap[c.name]) dataMap[c.name] = [];
+              displayItems.forEach(item => {
+                if (!dataMap[item.name]) dataMap[item.name] = [];
               });
               current = current.add(1, 'year');
             }
@@ -2106,9 +2143,13 @@ var Vr={},Br={};var Fr=function(){function t(t,e,n){var i=this;this._sleepAfterS
               const key = dayjs(e.date).format('YYYY');
               const idx = labels.indexOf(key);
               if (idx !== -1) {
-                categories.forEach(c => {
-                  if (e.category === c.name) {
-                    dataMap[c.name][idx] = (dataMap[c.name][idx] || 0) + e.amount;
+                displayItems.forEach(item => {
+                  if (isDrilldown) {
+                    if (e.category === targetCategory && e.subcategory === item.name) {
+                      dataMap[item.name][idx] = (dataMap[item.name][idx] || 0) + e.amount;
+                    }
+                  } else if (e.category === item.name) {
+                    dataMap[item.name][idx] = (dataMap[item.name][idx] || 0) + e.amount;
                   }
                 });
               }
@@ -2116,10 +2157,10 @@ var Vr={},Br={};var Fr=function(){function t(t,e,n){var i=this;this._sleepAfterS
 
             return {
               labels,
-              datasets: categories.map(c => ({
-                name: c.name,
-                data: dataMap[c.name] || [],
-                itemStyle: { color: c.color }
+              datasets: displayItems.map(item => ({
+                name: item.name,
+                data: dataMap[item.name] || [],
+                itemStyle: { color: item.color }
               }))
             };
           }
@@ -2196,9 +2237,11 @@ var Vr={},Br={};var Fr=function(){function t(t,e,n){var i=this;this._sleepAfterS
               itemStyle: { color: CATEGORY_CONFIG[name]?.color || '#6b7280' }
             }));
           } else {
-            return entries.map(([name, value]) => ({
+            // Drill-down mode: use subcategory colors
+            return entries.map(([name, value], idx) => ({
               name,
-              value
+              value,
+              itemStyle: { color: SUBCATEGORY_COLORS[idx % SUBCATEGORY_COLORS.length] }
             }));
           }
         }
@@ -2215,40 +2258,30 @@ var Vr={},Br={};var Fr=function(){function t(t,e,n){var i=this;this._sleepAfterS
               trigger: 'axis',
               axisPointer: { type: 'shadow' },
               formatter: function(params) {
-                // Build a map of seriesName to params for quick lookup
-                const paramMap = {};
-                params.forEach(p => {
-                  paramMap[p.seriesName] = p;
-                });
+                // params contains one item per series at the hovered position
+                // Each param has: seriesName, value, color, dataIndex
+                if (!params || params.length === 0) return '';
 
+                // Get label from the first param (all have same axisValue)
+                const label = params[0].axisValue || params[0].name || '';
+
+                // Build items from params directly
+                const items = params.filter(p => p.seriesName !== '总量');
                 let total = 0;
-                params.forEach(p => {
-                  if (p.seriesName !== '总量') total += p.value;
+                items.forEach(p => {
+                  total += (p.value || 0);
                 });
 
-                // Find the hovered item (the one with non-zero value and highest in stack visually)
-                // In stacked bar, visual order is bottom to top, so reverse catNames
-                const reversedCatNames = [...catNames].reverse();
-                let hoveredItem = null;
-                for (const name of reversedCatNames) {
-                  const p = paramMap[name];
-                  if (p && p.value > 0) {
-                    hoveredItem = name;
-                    break;
-                  }
-                }
-
-                let html = `<div style="font-weight:bold;margin-bottom:5px">${params[0].axisLabel}</div>`;
+                let html = `<div style="font-weight:bold;margin-bottom:5px">${label}</div>`;
                 html += `<div style="margin-bottom:5px">总计: ¥${total.toFixed(2)}</div>`;
 
-                // Use reversed order (top to bottom of stack, matching visual top-down order)
-                reversedCatNames.forEach(name => {
-                  const p = paramMap[name];
-                  if (p && p.value > 0) {
+                // Show items in visual order (reverse of params since bottom series comes first in params)
+                const reversedItems = [...items].reverse();
+                reversedItems.forEach(p => {
+                  if (p.value > 0) {
                     const pct = total > 0 ? ((p.value / total) * 100).toFixed(1) : 0;
-                    const isHovered = name === hoveredItem;
-                    const bgStyle = isHovered ? 'background:rgba(255,255,255,0.15);border-radius:3px;padding:2px 4px;' : '';
-                    html += `<div style="color:${p.color};${bgStyle}">${p.marker} ${p.seriesName}: ¥${p.value.toFixed(2)} (${pct}%)</div>`;
+                    const colorHex = typeof p.color === 'string' ? p.color : (p.color && p.color.color) || '#6b7280';
+                    html += `<div style="color:${colorHex}">● ${p.seriesName}: ¥${p.value.toFixed(2)} (${pct}%)</div>`;
                   }
                 });
                 return html;
@@ -2328,6 +2361,19 @@ var Vr={},Br={};var Fr=function(){function t(t,e,n){var i=this;this._sleepAfterS
           };
 
           pieChartInstance.setOption(option);
+
+          // Click handler for drill-down (only when at 总消费 level)
+          pieChartInstance.off('click');
+          if (reportCategory.value === '总消费') {
+            pieChartInstance.on('click', function(params) {
+              const categoryName = params.name;
+              // Only drill down if category has subcategories
+              const subs = subcategories.value[categoryName];
+              if (subs && subs.length > 0) {
+                reportCategory.value = categoryName;
+              }
+            });
+          }
         }
 
         function initReportCharts() {
@@ -2407,13 +2453,21 @@ var Vr={},Br={};var Fr=function(){function t(t,e,n){var i=this;this._sleepAfterS
           const labels = [];
           const dataMap = {};
 
+          // Determine if we're in drill-down mode
+          const isDrilldown = reportCategory.value !== '总消费';
+          const targetCategory = reportCategory.value;
+          const subCats = isDrilldown ? (subcategories.value[targetCategory] || []) : [];
+          const displayItems = isDrilldown
+            ? subCats.map((sub, idx) => ({ name: sub, color: SUBCATEGORY_COLORS[idx % SUBCATEGORY_COLORS.length] }))
+            : categories.map(c => ({ name: c.name, color: c.color }));
+
           // Initialize labels and data
           let current = start.clone();
           while (current.isBefore(end) || current.isSame(end)) {
             const key = current.format(format);
             labels.push(key);
-            categories.forEach(c => {
-              if (!dataMap[c.name]) dataMap[c.name] = [];
+            displayItems.forEach(item => {
+              if (!dataMap[item.name]) dataMap[item.name] = [];
             });
             current = period === 'year' ? current.add(1, 'month') : current.add(1, 'day');
           }
@@ -2433,20 +2487,25 @@ var Vr={},Br={};var Fr=function(){function t(t,e,n){var i=this;this._sleepAfterS
               return d.format('YYYY-MM-DD') === label;
             });
 
-            categories.forEach(c => {
+            displayItems.forEach(item => {
               const total = dayExpenses
-                .filter(e => e.category === c.name)
+                .filter(e => {
+                  if (isDrilldown) {
+                    return e.category === targetCategory && e.subcategory === item.name;
+                  }
+                  return e.category === item.name;
+                })
                 .reduce((sum, e) => sum + e.amount, 0);
-              dataMap[c.name].push(total);
+              dataMap[item.name].push(total);
             });
           });
 
           return {
             labels,
-            datasets: categories.map(c => ({
-              name: c.name,
-              data: dataMap[c.name] || [],
-              itemStyle: { color: c.color }
+            datasets: displayItems.map(item => ({
+              name: item.name,
+              data: dataMap[item.name] || [],
+              itemStyle: { color: item.color }
             }))
           };
         }
