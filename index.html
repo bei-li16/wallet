@@ -1024,7 +1024,15 @@ var Vr={},Br={};var Fr=function(){function t(t,e,n){var i=this;this._sleepAfterS
             v-model="customSubcategory"
             placeholder="输入自定义子类别"
             class="mt-2"
+            @keyup.enter="confirmAddSubcategory"
           >
+          <button
+            v-if="showCustomSubcategory && customSubcategory.trim()"
+            class="btn btn-secondary btn-sm mt-2"
+            @click="confirmAddSubcategory"
+          >
+            确认添加
+          </button>
         </div>
 
         <div class="form-group">
@@ -1060,8 +1068,15 @@ var Vr={},Br={};var Fr=function(){function t(t,e,n){var i=this;this._sleepAfterS
               v-for="sub in subs"
               :key="sub"
               class="tag text-xs"
+              style="cursor:pointer"
             >
               {{ sub }}
+              <span
+                style="margin-left:4px;opacity:0.6;font-size:10px;"
+                @click.stop="deleteSubcategory(mainCat, sub)"
+              >
+                ×
+              </span>
             </span>
           </div>
         </div>
@@ -1845,6 +1860,38 @@ var Vr={},Br={};var Fr=function(){function t(t,e,n){var i=this;this._sleepAfterS
 
         function saveSubcategories() {
           localStorage.setItem('wallet_subcategories', JSON.stringify(subcategories.value));
+        }
+
+        function deleteSubcategory(mainCat, sub) {
+          // Check if any expense has this subcategory
+          const hasRecords = expenses.value.some(e => e.category === mainCat && e.subcategory === sub);
+          if (hasRecords) {
+            alert(`"${sub}" 类别下有消费记录，无法删除`);
+            return;
+          }
+          // Remove the subcategory
+          const subs = subcategories.value[mainCat];
+          const index = subs.indexOf(sub);
+          if (index > -1) {
+            subs.splice(index, 1);
+            saveSubcategories();
+          }
+        }
+
+        function confirmAddSubcategory() {
+          const sub = customSubcategory.value.trim();
+          if (!sub) return;
+          const mainCat = expenseForm.value.category;
+          if (!subcategories.value[mainCat]) {
+            subcategories.value[mainCat] = [];
+          }
+          if (!subcategories.value[mainCat].includes(sub)) {
+            subcategories.value[mainCat].push(sub);
+            saveSubcategories();
+          }
+          expenseForm.value.subcategory = sub;
+          customSubcategory.value = '';
+          showCustomSubcategory.value = false;
         }
 
         function saveBudget() {
@@ -2642,6 +2689,8 @@ var Vr={},Br={};var Fr=function(){function t(t,e,n){var i=this;this._sleepAfterS
           batchDelete,
           cancelBatch,
           saveBudget,
+          deleteSubcategory,
+          confirmAddSubcategory,
           manualExport,
           manualImport,
           handleFileImport,
