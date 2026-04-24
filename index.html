@@ -887,6 +887,17 @@ var Vr={},Br={};var Fr=function(){function t(t,e,n){var i=this;this._sleepAfterS
         </div>
       </div>
 
+      <!-- Import/Export -->
+      <div class="flex gap-2 mb-4">
+        <button class="btn btn-secondary" @click="manualExport">
+          导出CSV
+        </button>
+        <button class="btn btn-secondary" @click="importFromTemplate">
+          导入CSV
+        </button>
+      </div>
+      <input type="file" ref="fileInput" accept=".csv" style="display:none" @change="handleFileImport">
+
       <!-- Category Filter -->
       <div class="chip-group">
         <span
