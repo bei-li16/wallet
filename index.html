@@ -1985,13 +1985,13 @@ var Vr={},Br={};var Fr=function(){function t(t,e,n){var i=this;this._sleepAfterS
             const lines = text.split(/\r?\n/).filter(line => line.trim());
             if (lines.length < 2) return;
 
-            // Skip header row
+            const existingIds = new Set(expenses.value.map(exp => exp.id));
             const dataLines = lines.slice(1);
             const newExpenses = [];
+            const duplicateCount = { count: 0 };
             const now = Date.now();
 
             for (const line of dataLines) {
-              // Parse CSV row (handle quoted fields)
               const matches = line.match(/("([^"]|"")*"|[^,]*)(,("([^"]|"")*"|[^,]*))*$/g);
               if (!matches) continue;
               const fields = matches[0].split(',').map(f => f.replace(/^"|"$/g, '').replace(/""/g, '"'));
@@ -1999,6 +1999,11 @@ var Vr={},Br={};var Fr=function(){function t(t,e,n){var i=this;this._sleepAfterS
 
               const [id, amount, category, subcategory, date, note, createdAt, updatedAt] = fields;
               if (!amount || !category || !date) continue;
+
+              if (id && existingIds.has(id)) {
+                duplicateCount.count++;
+                continue;
+              }
 
               newExpenses.push({
                 id: id || generateId(),
@@ -2012,13 +2017,13 @@ var Vr={},Br={};var Fr=function(){function t(t,e,n){var i=this;this._sleepAfterS
               });
             }
 
-            if (newExpenses.length > 0) {
+            const total = dataLines.length;
+            const successCount = newExpenses.length;
+            if (successCount > 0) {
               expenses.value = [...expenses.value, ...newExpenses];
-              saveData();
-              alert(`成功导入 ${newExpenses.length} 条记录`);
-            } else {
-              alert('未找到有效的消费记录');
+              saveExpenses();
             }
+            alert(`共${total}条记录，重复${duplicateCount.count}条，成功导入${successCount}条`);
           };
           reader.readAsText(file);
         }
