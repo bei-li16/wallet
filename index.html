@@ -962,13 +962,6 @@ var Vr={},Br={};var Fr=function(){function t(t,e,n){var i=this;this._sleepAfterS
         <button class="btn btn-danger btn-sm" @click="batchDelete">批量删除</button>
         <button class="btn btn-secondary btn-sm" @click="cancelBatch">取消</button>
       </div>
-
-      <!-- Import Template -->
-      <div class="card mt-4">
-        <button class="btn btn-secondary btn-block" @click="importFromTemplate">
-          📥 导入账单模板
-        </button>
-      </div>
     </div>
 
     <!-- Add/Edit Tab -->
@@ -2373,7 +2366,12 @@ var Vr={},Br={};var Fr=function(){function t(t,e,n){var i=this;this._sleepAfterS
             }))
           };
 
-          barChartInstance.setOption(option);
+          barChartInstance.setOption(option, { notMerge: true });
+          nextTick(() => {
+            if (barChartInstance && barChart.value) {
+              barChartInstance.resize();
+            }
+          });
         }
 
         function initPieChart(pieData) {
@@ -2412,7 +2410,7 @@ var Vr={},Br={};var Fr=function(){function t(t,e,n){var i=this;this._sleepAfterS
             }]
           };
 
-          pieChartInstance.setOption(option);
+          pieChartInstance.setOption(option, { notMerge: true });
 
           // Click handler for drill-down (only when at 总消费 level)
           pieChartInstance.off('click');
