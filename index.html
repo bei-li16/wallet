@@ -920,10 +920,29 @@ var Vr={},Br={};var Fr=function(){function t(t,e,n){var i=this;this._sleepAfterS
           :key="cat.name"
           class="tag cursor-pointer"
           :class="{ active: filterCategory === cat.name }"
-          @click="filterCategory = filterCategory === cat.name ? null : cat.name"
+          @click="toggleCategoryFilter(cat.name)"
           :style="{ '--tag-color': cat.color }"
         >
           {{ cat.icon }} {{ cat.name }}
+        </span>
+      </div>
+
+      <div v-if="filterCategory && availableFilterSubcategories.length > 0" class="chip-group">
+        <span
+          class="tag cursor-pointer"
+          :class="{ active: filterSubcategory === null }"
+          @click="setSubcategoryFilter(null)"
+        >
+          全部子类
+        </span>
+        <span
+          v-for="sub in availableFilterSubcategories"
+          :key="sub"
+          class="tag cursor-pointer"
+          :class="{ active: filterSubcategory === sub }"
+          @click="toggleSubcategoryFilter(sub)"
+        >
+          {{ sub }}
         </span>
       </div>
 
@@ -1403,6 +1422,7 @@ var Vr={},Br={};var Fr=function(){function t(t,e,n){var i=this;this._sleepAfterS
         const batchMode = ref(false);
         const selectedExpenses = ref([]);
         const filterCategory = ref(null);
+        const filterSubcategory = ref(null);
 
         // Chart instances
         let barChartInstance = null;
@@ -1419,10 +1439,33 @@ var Vr={},Br={};var Fr=function(){function t(t,e,n){var i=this;this._sleepAfterS
         const filteredExpenses = computed(() => {
           try {
             if (!expenses.value || !Array.isArray(expenses.value)) return [];
-            if (!filterCategory.value) return expenses.value;
-            return expenses.value.filter(e => e.category === filterCategory.value);
+            return expenses.value.filter(e => {
+              if (filterCategory.value && e.category !== filterCategory.value) {
+                return false;
+              }
+              if (filterSubcategory.value && e.subcategory !== filterSubcategory.value) {
+                return false;
+              }
+              return true;
+            });
           } catch (e) {
             console.error('filteredExpenses error:', e);
+            return [];
+          }
+        });
+
+        const availableFilterSubcategories = computed(() => {
+          try {
+            if (!filterCategory.value || !expenses.value || !Array.isArray(expenses.value)) return [];
+            return Array.from(
+              new Set(
+                expenses.value
+                  .filter(e => e.category === filterCategory.value && e.subcategory)
+                  .map(e => e.subcategory)
+              )
+            ).sort((a, b) => a.localeCompare(b, 'zh-CN'));
+          } catch (e) {
+            console.error('availableFilterSubcategories error:', e);
             return [];
           }
         });
@@ -1884,11 +1927,17 @@ var Vr={},Br={};var Fr=function(){function t(t,e,n){var i=this;this._sleepAfterS
         }
 
         function batchDelete() {
-          if (!confirm(`确定删除 ${selectedExpenses.value.length} 条记录?`)) return;
+          if (selectedExpenses.value.length === 0) {
+            cancelBatch();
+            return;
+          }
+          if (!confirm(`确定删除 ${selectedExpenses.value.length} 条记录?`)) {
+            cancelBatch();
+            return;
+          }
           expenses.value = expenses.value.filter(e => !selectedExpenses.value.includes(e.id));
           saveExpenses();
-          selectedExpenses.value = [];
-          batchMode.value = false;
+          cancelBatch();
         }
 
         function cancelBatch() {
@@ -1908,6 +1957,29 @@ var Vr={},Br={};var Fr=function(){function t(t,e,n){var i=this;this._sleepAfterS
         function deselectAll() {
           selectedExpenses.value = [];
         }
+
+        function toggleCategoryFilter(category) {
+          filterCategory.value = filterCategory.value === category ? null : category;
+          filterSubcategory.value = null;
+        }
+
+        function setSubcategoryFilter(subcategory) {
+          filterSubcategory.value = subcategory;
+        }
+
+        function toggleSubcategoryFilter(subcategory) {
+          filterSubcategory.value = filterSubcategory.value === subcategory ? null : subcategory;
+        }
+
+        watch(filterCategory, () => {
+          filterSubcategory.value = null;
+        });
+
+        watch([filterCategory, filterSubcategory], () => {
+          if (!batchMode.value) return;
+          const visibleIds = new Set(filteredRecentExpenses.value.map(e => e.id));
+          selectedExpenses.value = selectedExpenses.value.filter(id => visibleIds.has(id));
+        });
 
         // Storage
         function saveExpenses() {
@@ -2785,6 +2857,7 @@ var Vr={},Br={};var Fr=function(){function t(t,e,n){var i=this;this._sleepAfterS
           batchMode,
           selectedExpenses,
           filterCategory,
+          filterSubcategory,
           csvConnected,
           // Refs
           barChart,
@@ -2795,6 +2868,7 @@ var Vr={},Br={};var Fr=function(){function t(t,e,n){var i=this;this._sleepAfterS
           // Computed
           currentSubcategories,
           filteredExpenses,
+          availableFilterSubcategories,
           filteredRecentExpenses,
           todayTotal,
           weekTotal,
@@ -2828,6 +2902,9 @@ var Vr={},Br={};var Fr=function(){function t(t,e,n){var i=this;this._sleepAfterS
           enterBatchMode,
           selectAllInFilter,
           deselectAll,
+          toggleCategoryFilter,
+          setSubcategoryFilter,
+          toggleSubcategoryFilter,
           saveBudget,
           deleteSubcategory,
           confirmAddSubcategory,
