@@ -898,6 +898,21 @@ var Vr={},Br={};var Fr=function(){function t(t,e,n){var i=this;this._sleepAfterS
       </div>
       <input type="file" ref="fileInput" accept=".csv" style="display:none" @change="handleFileImport">
 
+      <!-- Batch Mode Toggle -->
+      <div class="flex gap-2 mb-4">
+        <button
+          v-if="!batchMode && filteredExpenses.length > 0"
+          class="btn btn-secondary"
+          @click="enterBatchMode"
+        >
+          批量删除
+        </button>
+        <template v-if="batchMode">
+          <button class="btn btn-secondary btn-sm" @click="selectAllInFilter">全选</button>
+          <button class="btn btn-secondary btn-sm" @click="deselectAll">取消全选</button>
+        </template>
+      </div>
+
       <!-- Category Filter -->
       <div class="chip-group">
         <span
@@ -957,7 +972,7 @@ var Vr={},Br={};var Fr=function(){function t(t,e,n){var i=this;this._sleepAfterS
       </ul>
 
       <!-- Batch Actions -->
-      <div v-if="batchMode && selectedExpenses.length > 0" class="batch-actions">
+      <div v-if="batchMode" class="batch-actions">
         <span class="text-sm text-gray-400">已选择 {{ selectedExpenses.length }} 条</span>
         <button class="btn btn-danger btn-sm" @click="batchDelete">批量删除</button>
         <button class="btn btn-secondary btn-sm" @click="cancelBatch">取消</button>
@@ -1881,6 +1896,19 @@ var Vr={},Br={};var Fr=function(){function t(t,e,n){var i=this;this._sleepAfterS
           selectedExpenses.value = [];
         }
 
+        function enterBatchMode() {
+          batchMode.value = true;
+          selectedExpenses.value = [];
+        }
+
+        function selectAllInFilter() {
+          selectedExpenses.value = filteredRecentExpenses.value.map(e => e.id);
+        }
+
+        function deselectAll() {
+          selectedExpenses.value = [];
+        }
+
         // Storage
         function saveExpenses() {
           localStorage.setItem('wallet_expenses', JSON.stringify(expenses.value));
@@ -2797,6 +2825,9 @@ var Vr={},Br={};var Fr=function(){function t(t,e,n){var i=this;this._sleepAfterS
           toggleSelect,
           batchDelete,
           cancelBatch,
+          enterBatchMode,
+          selectAllInFilter,
+          deselectAll,
           saveBudget,
           deleteSubcategory,
           confirmAddSubcategory,
