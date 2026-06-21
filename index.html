@@ -1176,7 +1176,7 @@ var Vr={},Br={};var Fr=function(){function t(t,e,n){var i=this;this._sleepAfterS
           </template>
 
           <!-- Back button for drill-down -->
-          <button v-if="reportCategory !== '总消费'" class="btn btn-secondary btn-sm" @click="reportCategory = '总消费'">
+          <button v-if="reportCategory !== TOTAL_KEY" class="btn btn-secondary btn-sm" @click="reportCategory = TOTAL_KEY">
             ← 返回
           </button>
         </div>
@@ -1304,6 +1304,9 @@ var Vr={},Br={};var Fr=function(){function t(t,e,n){var i=this;this._sleepAfterS
         <button v-if="!csvConnected" class="btn btn-sm btn-secondary ml-2" @click="manualExport">
           导出CSV
         </button>
+        <button v-if="!csvConnected" class="btn btn-sm btn-secondary ml-2" @click="connectCSV">
+          连接CSV
+        </button>
         <button class="btn btn-sm btn-secondary ml-2" @click="manualImport">
           导入CSV
         </button>
@@ -1360,6 +1363,8 @@ var Vr={},Br={};var Fr=function(){function t(t,e,n){var i=this;this._sleepAfterS
       '其他': ['礼品', '捐赠', '其它']
     };
 
+    const TOTAL_KEY = TOTAL_KEY;
+
     createApp({
       setup() {
         // Constants
@@ -1388,18 +1393,18 @@ var Vr={},Br={};var Fr=function(){function t(t,e,n){var i=this;this._sleepAfterS
         const expenses = ref([]);
         const subcategories = ref({ ...DEFAULT_SUBCATEGORIES });
         const budget = ref(0);
-        const currentTabRef = ref(null);
         const barChart = ref(null);
         const pieChart = ref(null);
         const trendChart = ref(null);
         const categoryChart = ref(null);
         const fileInput = ref(null);
         const csvConnected = ref(false);
+        let csvFileHandle = null;
 
         // Report state
         const reportPeriod = ref('month');
         const reportChartType = ref('pie');
-        const reportCategory = ref('总消费');
+        const reportCategory = ref(TOTAL_KEY);
         const reportGranularity = ref('month');
         const reportSpecificPeriod = ref(''); // Selected specific period (e.g., '2026-04' for month)
 
@@ -1530,115 +1535,42 @@ var Vr={},Br={};var Fr=function(){function t(t,e,n){var i=this;this._sleepAfterS
         });
 
         const currentPeriodTotal = computed(() => {
-          // For 'all' period, return all expenses total
           if (reportPeriod.value === 'all') {
             return expenses.value.reduce((sum, e) => sum + e.amount, 0);
           }
-
-          const now = dayjs();
-          let start, end;
-
-          // If specific period is selected, use it
-          if (reportSpecificPeriod.value) {
-            const p = reportSpecificPeriod.value;
-            if (reportPeriod.value === 'week') {
-              const [year, week] = p.split('-W');
-              const yearDayjs = dayjs().year(parseInt(year));
-              const firstDay = yearDayjs.month(0).date(1);
-              const firstMondayDay = firstDay.day() === 0 ? 7 : firstDay.day();
-              const firstMonday = firstDay.subtract(firstMondayDay - 1, 'day');
-              const weekStart = firstMonday.add((parseInt(week) - 1) * 7, 'day');
-              start = weekStart.format('YYYY-MM-DD');
-              end = weekStart.clone().add(6, 'day').format('YYYY-MM-DD');
-            } else if (reportPeriod.value === 'month') {
-              start = dayjs(p + '-01').startOf('month').format('YYYY-MM-DD');
-              end = dayjs(p + '-01').endOf('month').format('YYYY-MM-DD');
-            } else if (reportPeriod.value === 'year') {
-              start = dayjs(p + '-01-01').startOf('year').format('YYYY-MM-DD');
-              end = dayjs(p + '-01-01').endOf('year').format('YYYY-MM-DD');
-            }
-          } else {
-            if (reportPeriod.value === 'week') {
-              start = now.startOf('week').format('YYYY-MM-DD');
-              end = now.endOf('week').format('YYYY-MM-DD');
-            } else if (reportPeriod.value === 'month') {
-              start = now.startOf('month').format('YYYY-MM-DD');
-              end = now.endOf('month').format('YYYY-MM-DD');
-            } else if (reportPeriod.value === 'year') {
-              start = now.startOf('year').format('YYYY-MM-DD');
-              end = now.endOf('year').format('YYYY-MM-DD');
-            }
-          }
-
+          const { start, end } = getPeriodRange(reportPeriod.value, reportSpecificPeriod.value);
+          const s = start.format('YYYY-MM-DD');
+          const e = end.format('YYYY-MM-DD');
           return expenses.value
-            .filter(e => {
-              if (e.date >= start && e.date <= end) {
-                // Filter by category if in drill-down mode
-                if (reportCategory.value !== '总消费') {
-                  return e.category === reportCategory.value;
+            .filter(exp => {
+              if (exp.date >= s && exp.date <= e) {
+                if (reportCategory.value !== TOTAL_KEY) {
+                  return exp.category === reportCategory.value;
                 }
                 return true;
               }
               return false;
             })
-            .reduce((sum, e) => sum + e.amount, 0);
+            .reduce((sum, exp) => sum + exp.amount, 0);
         });
 
         const prevPeriodTotal = computed(() => {
-          // For 'all' period, no previous period
-          if (reportPeriod.value === 'all') {
-            return 0;
-          }
-
-          const now = dayjs();
-          let start, end;
-
-          // If specific period is selected, calculate previous period
-          if (reportSpecificPeriod.value) {
-            const p = reportSpecificPeriod.value;
-            if (reportPeriod.value === 'week') {
-              const [year, week] = p.split('-W');
-              const yearDayjs = dayjs().year(parseInt(year));
-              const firstDay = yearDayjs.month(0).date(1);
-              const firstMondayDay = firstDay.day() === 0 ? 7 : firstDay.day();
-              const firstMonday = firstDay.subtract(firstMondayDay - 1, 'day');
-              const weekStart = firstMonday.add((parseInt(week) - 1) * 7, 'day');
-              const prevWeekStart = weekStart.subtract(7, 'day');
-              start = prevWeekStart.format('YYYY-MM-DD');
-              end = prevWeekStart.clone().add(6, 'day').format('YYYY-MM-DD');
-            } else if (reportPeriod.value === 'month') {
-              start = dayjs(p + '-01').subtract(1, 'month').startOf('month').format('YYYY-MM-DD');
-              end = dayjs(p + '-01').subtract(1, 'month').endOf('month').format('YYYY-MM-DD');
-            } else if (reportPeriod.value === 'year') {
-              start = dayjs(p + '-01-01').subtract(1, 'year').startOf('year').format('YYYY-MM-DD');
-              end = dayjs(p + '-01-01').subtract(1, 'year').endOf('year').format('YYYY-MM-DD');
-            }
-          } else {
-            // Use previous of current period
-            if (reportPeriod.value === 'week') {
-              start = now.subtract(1, 'week').startOf('week').format('YYYY-MM-DD');
-              end = now.subtract(1, 'week').endOf('week').format('YYYY-MM-DD');
-            } else if (reportPeriod.value === 'month') {
-              start = now.subtract(1, 'month').startOf('month').format('YYYY-MM-DD');
-              end = now.subtract(1, 'month').endOf('month').format('YYYY-MM-DD');
-            } else if (reportPeriod.value === 'year') {
-              start = now.subtract(1, 'year').startOf('year').format('YYYY-MM-DD');
-              end = now.subtract(1, 'year').endOf('year').format('YYYY-MM-DD');
-            }
-          }
-
+          if (reportPeriod.value === 'all') return 0;
+          const r = getPrevPeriodRange(reportPeriod.value, reportSpecificPeriod.value);
+          if (!r) return 0;
+          const s = r.start.format('YYYY-MM-DD');
+          const e = r.end.format('YYYY-MM-DD');
           return expenses.value
-            .filter(e => {
-              if (e.date >= start && e.date <= end) {
-                // Filter by category if in drill-down mode
-                if (reportCategory.value !== '总消费') {
-                  return e.category === reportCategory.value;
+            .filter(exp => {
+              if (exp.date >= s && exp.date <= e) {
+                if (reportCategory.value !== TOTAL_KEY) {
+                  return exp.category === reportCategory.value;
                 }
                 return true;
               }
               return false;
             })
-            .reduce((sum, e) => sum + e.amount, 0);
+            .reduce((sum, exp) => sum + exp.amount, 0);
         });
 
         const periodChange = computed(() => {
@@ -1717,18 +1649,6 @@ var Vr={},Br={};var Fr=function(){function t(t,e,n){var i=this;this._sleepAfterS
           return p;
         });
 
-        const weekChartData = computed(() => {
-          return getPeriodChartData('week');
-        });
-
-        const monthChartData = computed(() => {
-          return getPeriodChartData('month');
-        });
-
-        const yearChartData = computed(() => {
-          return getPeriodChartData('year');
-        });
-
         const allChartData = computed(() => {
           return getAllTimeChartData();
         });
@@ -1739,7 +1659,7 @@ var Vr={},Br={};var Fr=function(){function t(t,e,n){var i=this;this._sleepAfterS
         });
 
         const displayCategories = computed(() => {
-          if (reportCategory.value === '总消费') {
+          if (reportCategory.value === TOTAL_KEY) {
             return categories.map(c => c.name);
           }
           const subs = subcategories.value[reportCategory.value] || [];
@@ -1748,7 +1668,7 @@ var Vr={},Br={};var Fr=function(){function t(t,e,n){var i=this;this._sleepAfterS
 
         const filteredReportExpenses = computed(() => {
           if (!expenses.value) return [];
-          if (reportCategory.value === '总消费') {
+          if (reportCategory.value === TOTAL_KEY) {
             return expenses.value;
           }
           return expenses.value.filter(e => e.category === reportCategory.value);
@@ -1809,6 +1729,73 @@ var Vr={},Br={};var Fr=function(){function t(t,e,n){var i=this;this._sleepAfterS
           return `${weekStart.format('YYYY/MM/DD')} - ${weekEnd.format('YYYY/MM/DD')}`;
         }
 
+        // Shared: get start/end dayjs objects for a given period type and optional specific period
+        function getPeriodRange(period, specificPeriod) {
+          if (specificPeriod) {
+            const p = specificPeriod;
+            if (period === 'week') {
+              const [year, week] = p.split('-W');
+              const yearDayjs = dayjs().year(parseInt(year));
+              const firstDay = yearDayjs.month(0).date(1);
+              const firstMondayDay = firstDay.day() === 0 ? 7 : firstDay.day();
+              const firstMonday = firstDay.subtract(firstMondayDay - 1, 'day');
+              const start = firstMonday.add((parseInt(week) - 1) * 7, 'day');
+              return { start, end: start.clone().add(6, 'day') };
+            } else if (period === 'month') {
+              const d = dayjs(p + '-01');
+              return { start: d.startOf('month'), end: d.endOf('month') };
+            } else if (period === 'year') {
+              const d = dayjs(p + '-01-01');
+              return { start: d.startOf('year'), end: d.endOf('year') };
+            }
+          }
+
+          const now = dayjs();
+          if (period === 'week') {
+            return { start: now.startOf('week'), end: now.endOf('week') };
+          } else if (period === 'month') {
+            return { start: now.startOf('month'), end: now.endOf('month') };
+          } else if (period === 'year') {
+            return { start: now.startOf('year'), end: now.endOf('year') };
+          }
+          // 'all' returns full range
+          if (!expenses.value || expenses.value.length === 0) {
+            return { start: now, end: now };
+          }
+          const sorted = [...expenses.value].sort((a, b) => new Date(a.date) - new Date(b.date));
+          return { start: dayjs(sorted[0].date), end: dayjs(sorted[sorted.length - 1].date) };
+        }
+
+        function getPrevPeriodRange(period, specificPeriod) {
+          if (period === 'all') return null;
+          if (specificPeriod) {
+            const p = specificPeriod;
+            if (period === 'week') {
+              const r = getPeriodRange(period, specificPeriod);
+              const start = r.start.subtract(7, 'day');
+              return { start, end: start.clone().add(6, 'day') };
+            } else if (period === 'month') {
+              const d = dayjs(p + '-01').subtract(1, 'month');
+              return { start: d.startOf('month'), end: d.endOf('month') };
+            } else if (period === 'year') {
+              const d = dayjs(p + '-01-01').subtract(1, 'year');
+              return { start: d.startOf('year'), end: d.endOf('year') };
+            }
+          }
+          const now = dayjs();
+          if (period === 'week') {
+            const start = now.subtract(1, 'week').startOf('week');
+            return { start, end: start.clone().endOf('week') };
+          } else if (period === 'month') {
+            const start = now.subtract(1, 'month').startOf('month');
+            return { start, end: start.clone().endOf('month') };
+          } else if (period === 'year') {
+            const start = now.subtract(1, 'year').startOf('year');
+            return { start, end: start.clone().endOf('year') };
+          }
+          return null;
+        }
+
         function selectCategory(name) {
           expenseForm.value.category = name;
           expenseForm.value.subcategory = '';
@@ -1845,6 +1832,14 @@ var Vr={},Br={};var Fr=function(){function t(t,e,n){var i=this;this._sleepAfterS
                 subcategory,
                 updatedAt: Date.now()
               };
+              // Add custom subcategory to list if new (also in edit mode)
+              if (showCustomSubcategory.value && customSubcategory.value) {
+                const cat = expenseForm.value.category;
+                if (!subcategories.value[cat].includes(customSubcategory.value)) {
+                  subcategories.value[cat].push(customSubcategory.value);
+                  saveSubcategories();
+                }
+              }
             }
             editingId.value = null;
           } else {
@@ -1857,7 +1852,6 @@ var Vr={},Br={};var Fr=function(){function t(t,e,n){var i=this;this._sleepAfterS
             };
             expenses.value.push(newExpense);
 
-            // Add custom subcategory to list if new
             if (showCustomSubcategory.value && customSubcategory.value) {
               const cat = expenseForm.value.category;
               if (!subcategories.value[cat].includes(customSubcategory.value)) {
@@ -2028,14 +2022,20 @@ var Vr={},Br={};var Fr=function(){function t(t,e,n){var i=this;this._sleepAfterS
         }
 
         function loadData() {
-          const savedExpenses = localStorage.getItem('wallet_expenses');
-          if (savedExpenses) {
-            expenses.value = JSON.parse(savedExpenses);
-          }
+          try {
+            const savedExpenses = localStorage.getItem('wallet_expenses');
+            if (savedExpenses) {
+              expenses.value = JSON.parse(savedExpenses);
+            }
 
-          const savedSubcategories = localStorage.getItem('wallet_subcategories');
-          if (savedSubcategories) {
-            subcategories.value = JSON.parse(savedSubcategories);
+            const savedSubcategories = localStorage.getItem('wallet_subcategories');
+            if (savedSubcategories) {
+              subcategories.value = JSON.parse(savedSubcategories);
+            }
+          } catch (e) {
+            console.error('loadData error:', e);
+            expenses.value = [];
+            subcategories.value = { ...DEFAULT_SUBCATEGORIES };
           }
 
           const savedBudget = localStorage.getItem('wallet_budget');
@@ -2071,10 +2071,43 @@ var Vr={},Br={};var Fr=function(){function t(t,e,n){var i=this;this._sleepAfterS
           URL.revokeObjectURL(url);
         }
 
+        // Proper CSV line parser (handles quoted fields with embedded commas)
+        function parseCSVLine(line) {
+          const fields = [];
+          let current = '';
+          let inQuotes = false;
+          for (let i = 0; i < line.length; i++) {
+            const ch = line[i];
+            if (inQuotes) {
+              if (ch === '"') {
+                if (i + 1 < line.length && line[i + 1] === '"') {
+                  current += '"';
+                  i++;
+                } else {
+                  inQuotes = false;
+                }
+              } else {
+                current += ch;
+              }
+            } else {
+              if (ch === '"') {
+                inQuotes = true;
+              } else if (ch === ',') {
+                fields.push(current);
+                current = '';
+              } else {
+                current += ch;
+              }
+            }
+          }
+          fields.push(current);
+          return fields;
+        }
+
         function importFromCSV(file) {
           const reader = new FileReader();
           reader.onload = (e) => {
-            const text = e.target.result;
+            const text = e.target.result.replace(/^\uFEFF/, '');
             const lines = text.split(/\r?\n/).filter(line => line.trim());
             if (lines.length < 2) return;
 
@@ -2085,9 +2118,7 @@ var Vr={},Br={};var Fr=function(){function t(t,e,n){var i=this;this._sleepAfterS
             const now = Date.now();
 
             for (const line of dataLines) {
-              const matches = line.match(/("([^"]|"")*"|[^,]*)(,("([^"]|"")*"|[^,]*))*$/g);
-              if (!matches) continue;
-              const fields = matches[0].split(',').map(f => f.replace(/^"|"$/g, '').replace(/""/g, '"'));
+              const fields = parseCSVLine(line);
               if (fields.length < 6) continue;
 
               const [id, amount, category, subcategory, date, note, createdAt, updatedAt] = fields;
@@ -2138,83 +2169,111 @@ var Vr={},Br={};var Fr=function(){function t(t,e,n){var i=this;this._sleepAfterS
         }
 
         function syncToCSV() {
-          // File System Access API sync - Chrome/Edge only
-          if ('showSaveFilePicker' in window) {
-            // Auto-sync capability would go here
-            // For now, mark as connected if available
+          if (!('showSaveFilePicker' in window)) return;
+          if (csvFileHandle) {
+            writeCSVFile(csvFileHandle);
+          } else {
+            // First time: ask user to pick a save location
+            requestCSVHandle();
+          }
+        }
+
+        async function requestCSVHandle() {
+          try {
+            csvFileHandle = await window.showSaveFilePicker({
+              types: [{ description: 'CSV 文件', accept: { 'text/csv': ['.csv'] } }],
+              suggestedName: `expenses_${dayjs().format('YYYY-MM-DD')}.csv`
+            });
+            await writeCSVFile(csvFileHandle);
+          } catch (err) {
+            if (err.name !== 'AbortError') {
+              console.error('CSV handle request error:', err);
+            }
+          }
+        }
+
+        async function writeCSVFile(handle) {
+          try {
+            const writable = await handle.createWritable();
+            const headers = ['id', 'amount', 'category', 'subcategory', 'date', 'note', 'createdAt', 'updatedAt'];
+            const rows = expenses.value.map(e => [
+              e.id,
+              e.amount,
+              e.category,
+              e.subcategory,
+              e.date,
+              e.note || '',
+              e.createdAt,
+              e.updatedAt
+            ]);
+            const csvContent = '\uFEFF' + [headers, ...rows]
+              .map(row => row.map(cell => `"${cell}"`).join(','))
+              .join('\r\n');
+            await writable.write(csvContent);
+            await writable.close();
             csvConnected.value = true;
+          } catch (err) {
+            console.error('CSV write error:', err);
+            csvConnected.value = false;
+            csvFileHandle = null;
+          }
+        }
+
+        async function connectCSV() {
+          if (!('showOpenFilePicker' in window)) {
+            alert('当前浏览器不支持 File System Access API，请使用 Chrome 或 Edge');
+            return;
+          }
+          try {
+            const [handle] = await window.showOpenFilePicker({
+              types: [{ description: 'CSV 文件', accept: { 'text/csv': ['.csv'] } }]
+            });
+            csvFileHandle = handle;
+            const file = await handle.getFile();
+            const text = await file.text();
+            // Parse existing data from file
+            const lines = text.replace(/^\uFEFF/, '').split(/\r?\n/).filter(line => line.trim());
+            if (lines.length > 1) {
+              importFromCSVText(lines);
+            }
+            csvConnected.value = true;
+          } catch (err) {
+            if (err.name !== 'AbortError') {
+              console.error('CSV connect error:', err);
+            }
+          }
+        }
+
+        // Import from already-read CSV text lines
+        function importFromCSVText(lines) {
+          const existingIds = new Set(expenses.value.map(exp => exp.id));
+          const dataLines = lines.slice(1);
+          const newExpenses = [];
+          const now = Date.now();
+          for (const line of dataLines) {
+            const fields = parseCSVLine(line);
+            if (fields.length < 6) continue;
+            const [id, amount, category, subcategory, date, note, createdAt, updatedAt] = fields;
+            if (!amount || !category || !date) continue;
+            if (id && existingIds.has(id)) continue;
+            newExpenses.push({
+              id: id || generateId(),
+              amount: parseFloat(amount) || 0,
+              category,
+              subcategory: subcategory || '',
+              date,
+              note: note || '',
+              createdAt: parseInt(createdAt) || now,
+              updatedAt: parseInt(updatedAt) || now
+            });
+          }
+          if (newExpenses.length > 0) {
+            expenses.value = [...expenses.value, ...newExpenses];
+            saveExpenses();
           }
         }
 
         // Chart helpers
-        function getPeriodChartData(period) {
-          const now = dayjs();
-          let start, end, format, groupBy;
-
-          if (period === 'week') {
-            start = now.startOf('week');
-            end = now.endOf('week');
-            format = 'YYYY-MM-DD';
-            groupBy = 'day';
-          } else if (period === 'month') {
-            start = now.startOf('month');
-            end = now.endOf('month');
-            format = 'YYYY-MM-DD';
-            groupBy = 'day';
-          } else if (period === 'year') {
-            start = now.startOf('year');
-            end = now.endOf('year');
-            format = 'YYYY-MM';
-            groupBy = 'month';
-          }
-
-          const labels = [];
-          const dataMap = {};
-
-          // Initialize labels and data
-          let current = start.clone();
-          while (current.isBefore(end) || current.isSame(end)) {
-            const key = current.format(format);
-            labels.push(key);
-            categories.forEach(c => {
-              if (!dataMap[c.name]) dataMap[c.name] = [];
-            });
-            current = period === 'year' ? current.add(1, 'month') : current.add(1, 'day');
-          }
-
-          // Fill data
-          const filtered = expenses.value.filter(e => {
-            const d = dayjs(e.date);
-            return d.isSameOrAfter(start) && d.isSameOrBefore(end);
-          });
-
-          labels.forEach(label => {
-            const dayExpenses = filtered.filter(e => {
-              const d = dayjs(e.date);
-              if (period === 'year') {
-                return d.format('YYYY-MM') === label;
-              }
-              return d.format('YYYY-MM-DD') === label;
-            });
-
-            categories.forEach(c => {
-              const total = dayExpenses
-                .filter(e => e.category === c.name)
-                .reduce((sum, e) => sum + e.amount, 0);
-              dataMap[c.name].push(total);
-            });
-          });
-
-          return {
-            labels,
-            datasets: categories.map(c => ({
-              name: c.name,
-              data: dataMap[c.name] || [],
-              itemStyle: { color: c.color }
-            }))
-          };
-        }
-
         function getAllTimeChartData() {
           if (expenses.value.length === 0) {
             return { labels: [], datasets: [] };
@@ -2224,137 +2283,67 @@ var Vr={},Br={};var Fr=function(){function t(t,e,n){var i=this;this._sleepAfterS
           const firstDate = dayjs(sorted[0].date);
           const lastDate = dayjs(sorted[sorted.length - 1].date);
 
-          // Determine if we're in drill-down mode
-          const isDrilldown = reportCategory.value !== '总消费';
+          const isDrilldown = reportCategory.value !== TOTAL_KEY;
           const targetCategory = reportCategory.value;
           const subCats = isDrilldown ? (subcategories.value[targetCategory] || []) : [];
           const displayItems = isDrilldown
             ? subCats.map((sub, idx) => ({ name: sub, color: SUBCATEGORY_COLORS[idx % SUBCATEGORY_COLORS.length] }))
             : categories.map(c => ({ name: c.name, color: c.color }));
 
-          if (reportGranularity.value === 'month') {
-            const labels = [];
-            const dataMap = {};
-            let current = firstDate.startOf('month');
+          const isMonth = reportGranularity.value === 'month';
+          const fmt = isMonth ? 'YYYY-MM' : 'YYYY';
+          const unit = isMonth ? 'month' : 'year';
 
-            while (current.isBefore(lastDate) || current.isSame(lastDate)) {
-              const key = current.format('YYYY-MM');
-              labels.push(key);
-              displayItems.forEach(item => {
-                if (!dataMap[item.name]) dataMap[item.name] = [];
-              });
-              current = current.add(1, 'month');
-            }
+          const labels = [];
+          const dataMap = {};
+          let current = isMonth ? firstDate.startOf('month') : firstDate.startOf('year');
 
-            sorted.forEach(e => {
-              const key = dayjs(e.date).format('YYYY-MM');
-              const idx = labels.indexOf(key);
-              if (idx !== -1) {
-                displayItems.forEach(item => {
-                  if (isDrilldown) {
-                    if (e.category === targetCategory && e.subcategory === item.name) {
-                      dataMap[item.name][idx] = (dataMap[item.name][idx] || 0) + e.amount;
-                    }
-                  } else if (e.category === item.name) {
-                    dataMap[item.name][idx] = (dataMap[item.name][idx] || 0) + e.amount;
-                  }
-                });
-              }
+          while (current.isBefore(lastDate) || current.isSame(lastDate)) {
+            const key = current.format(fmt);
+            labels.push(key);
+            displayItems.forEach(item => {
+              if (!dataMap[item.name]) dataMap[item.name] = [];
             });
-
-            return {
-              labels,
-              datasets: displayItems.map(item => ({
-                name: item.name,
-                data: dataMap[item.name] || [],
-                itemStyle: { color: item.color }
-              }))
-            };
-          } else {
-            const labels = [];
-            const dataMap = {};
-            let current = firstDate.startOf('year');
-
-            while (current.isBefore(lastDate) || current.isSame(lastDate)) {
-              const key = current.format('YYYY');
-              labels.push(key);
-              displayItems.forEach(item => {
-                if (!dataMap[item.name]) dataMap[item.name] = [];
-              });
-              current = current.add(1, 'year');
-            }
-
-            sorted.forEach(e => {
-              const key = dayjs(e.date).format('YYYY');
-              const idx = labels.indexOf(key);
-              if (idx !== -1) {
-                displayItems.forEach(item => {
-                  if (isDrilldown) {
-                    if (e.category === targetCategory && e.subcategory === item.name) {
-                      dataMap[item.name][idx] = (dataMap[item.name][idx] || 0) + e.amount;
-                    }
-                  } else if (e.category === item.name) {
-                    dataMap[item.name][idx] = (dataMap[item.name][idx] || 0) + e.amount;
-                  }
-                });
-              }
-            });
-
-            return {
-              labels,
-              datasets: displayItems.map(item => ({
-                name: item.name,
-                data: dataMap[item.name] || [],
-                itemStyle: { color: item.color }
-              }))
-            };
+            current = current.add(1, unit);
           }
+
+          sorted.forEach(e => {
+            const key = dayjs(e.date).format(fmt);
+            const idx = labels.indexOf(key);
+            if (idx !== -1) {
+              displayItems.forEach(item => {
+                if (isDrilldown) {
+                  if (e.category === targetCategory && e.subcategory === item.name) {
+                    dataMap[item.name][idx] = (dataMap[item.name][idx] || 0) + e.amount;
+                  }
+                } else if (e.category === item.name) {
+                  dataMap[item.name][idx] = (dataMap[item.name][idx] || 0) + e.amount;
+                }
+              });
+            }
+          });
+
+          return {
+            labels,
+            datasets: displayItems.map(item => ({
+              name: item.name,
+              data: dataMap[item.name] || [],
+              itemStyle: { color: item.color }
+            }))
+          };
         }
 
         function getFilteredExpensesByPeriod() {
-          const now = dayjs();
-          let start, end;
-
-          // If specific period is selected, use it
-          if (reportSpecificPeriod.value) {
-            if (reportPeriod.value === 'all') {
-              // For 'all' with specific period, return all expenses
-              return expenses.value;
-            }
-            const p = reportSpecificPeriod.value;
-            if (reportPeriod.value === 'week') {
-              const [year, week] = p.split('-W');
-              const yearDayjs = dayjs().year(parseInt(year));
-              const firstDay = yearDayjs.month(0).date(1);
-              const firstMondayDay = firstDay.day() === 0 ? 7 : firstDay.day();
-              const firstMonday = firstDay.subtract(firstMondayDay - 1, 'day');
-              const weekStart = firstMonday.add((parseInt(week) - 1) * 7, 'day');
-              start = weekStart.format('YYYY-MM-DD');
-              end = weekStart.clone().add(6, 'day').format('YYYY-MM-DD');
-            } else if (reportPeriod.value === 'month') {
-              start = dayjs(p + '-01').startOf('month').format('YYYY-MM-DD');
-              end = dayjs(p + '-01').endOf('month').format('YYYY-MM-DD');
-            } else if (reportPeriod.value === 'year') {
-              start = dayjs(p + '-01-01').startOf('year').format('YYYY-MM-DD');
-              end = dayjs(p + '-01-01').endOf('year').format('YYYY-MM-DD');
-            }
-          } else {
-            // Use current period
-            if (reportPeriod.value === 'week') {
-              start = now.startOf('week').format('YYYY-MM-DD');
-              end = now.endOf('week').format('YYYY-MM-DD');
-            } else if (reportPeriod.value === 'month') {
-              start = now.startOf('month').format('YYYY-MM-DD');
-              end = now.endOf('month').format('YYYY-MM-DD');
-            } else if (reportPeriod.value === 'year') {
-              start = now.startOf('year').format('YYYY-MM-DD');
-              end = now.endOf('year').format('YYYY-MM-DD');
-            } else {
-              return expenses.value;
-            }
+          if (reportPeriod.value === 'all' && reportSpecificPeriod.value) {
+            return expenses.value;
           }
-
-          return expenses.value.filter(e => e.date >= start && e.date <= end);
+          if (reportPeriod.value === 'all') {
+            return expenses.value;
+          }
+          const { start, end } = getPeriodRange(reportPeriod.value, reportSpecificPeriod.value);
+          const s = start.format('YYYY-MM-DD');
+          const e = end.format('YYYY-MM-DD');
+          return expenses.value.filter(exp => exp.date >= s && exp.date <= e);
         }
 
         function getCategoryPieData(filteredExpenses) {
@@ -2362,20 +2351,20 @@ var Vr={},Br={};var Fr=function(){function t(t,e,n){var i=this;this._sleepAfterS
             return [];
           }
 
-          const targetExpenses = reportCategory.value === '总消费'
+          const targetExpenses = reportCategory.value === TOTAL_KEY
             ? filteredExpenses
             : filteredExpenses.filter(e => e.category === reportCategory.value);
 
           const data = {};
 
           targetExpenses.forEach(e => {
-            const key = reportCategory.value === '总消费' ? e.category : e.subcategory;
+            const key = reportCategory.value === TOTAL_KEY ? e.category : e.subcategory;
             data[key] = (data[key] || 0) + e.amount;
           });
 
           const entries = Object.entries(data).filter(([_, v]) => v > 0);
 
-          if (reportCategory.value === '总消费') {
+          if (reportCategory.value === TOTAL_KEY) {
             return entries.map(([name, value]) => ({
               name,
               value,
@@ -2514,7 +2503,7 @@ var Vr={},Br={};var Fr=function(){function t(t,e,n){var i=this;this._sleepAfterS
 
           // Click handler for drill-down (only when at 总消费 level)
           pieChartInstance.off('click');
-          if (reportCategory.value === '总消费') {
+          if (reportCategory.value === TOTAL_KEY) {
             pieChartInstance.on('click', function(params) {
               const categoryName = params.name;
               // Only drill down if category has subcategories
@@ -2559,52 +2548,21 @@ var Vr={},Br={};var Fr=function(){function t(t,e,n){var i=this;this._sleepAfterS
 
         // Get chart data for a specific period (supports reportSpecificPeriod)
         function getChartDataForPeriod(period) {
-          let start, end, format;
+          let format;
 
-          // If specific period is selected, use it
-          if (reportSpecificPeriod.value) {
-            const p = reportSpecificPeriod.value;
-            if (period === 'week') {
-              const [year, week] = p.split('-W');
-              const yearDayjs = dayjs().year(parseInt(year));
-              const firstDay = yearDayjs.month(0).date(1);
-              const firstMondayDay = firstDay.day() === 0 ? 7 : firstDay.day();
-              const firstMonday = firstDay.subtract(firstMondayDay - 1, 'day');
-              start = firstMonday.add((parseInt(week) - 1) * 7, 'day');
-              end = start.clone().add(6, 'day');
-              format = 'YYYY-MM-DD';
-            } else if (period === 'month') {
-              start = dayjs(p + '-01').startOf('month');
-              end = dayjs(p + '-01').endOf('month');
-              format = 'YYYY-MM-DD';
-            } else if (period === 'year') {
-              start = dayjs(p + '-01-01').startOf('year');
-              end = dayjs(p + '-01-01').endOf('year');
-              format = 'YYYY-MM';
-            }
+          if (period === 'year') {
+            format = 'YYYY-MM';
           } else {
-            // Use current period
-            const now = dayjs();
-            if (period === 'week') {
-              start = now.startOf('week');
-              end = now.endOf('week');
-              format = 'YYYY-MM-DD';
-            } else if (period === 'month') {
-              start = now.startOf('month');
-              end = now.endOf('month');
-              format = 'YYYY-MM-DD';
-            } else if (period === 'year') {
-              start = now.startOf('year');
-              end = now.endOf('year');
-              format = 'YYYY-MM';
-            }
+            format = 'YYYY-MM-DD';
           }
+
+          const { start, end } = getPeriodRange(period, reportSpecificPeriod.value);
 
           const labels = [];
           const dataMap = {};
 
           // Determine if we're in drill-down mode
-          const isDrilldown = reportCategory.value !== '总消费';
+          const isDrilldown = reportCategory.value !== TOTAL_KEY;
           const targetCategory = reportCategory.value;
           const subCats = isDrilldown ? (subcategories.value[targetCategory] || []) : [];
           const displayItems = isDrilldown
@@ -2910,6 +2868,7 @@ var Vr={},Br={};var Fr=function(){function t(t,e,n){var i=this;this._sleepAfterS
           confirmAddSubcategory,
           manualExport,
           manualImport,
+          connectCSV,
           handleFileImport,
           importFromTemplate: () => fileInput.value?.click()
         };
