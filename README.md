@@ -19,7 +19,7 @@
 | Vue 3 | 前端框架 |
 | ECharts 5 | 图表库 |
 | Day.js | 日期处理 |
-| Tailwind CSS | 样式（工具类） |
+| 自定义工具类 | 样式（Tailwind 风格） |
 | localStorage | 本地存储 |
 | CSV | 数据导入导出 |
 
@@ -76,14 +76,17 @@
 
 ```
 wallet/
-├── index.html               # 完整应用
+├── index.html               # 完整应用（～2920行）
+├── AGENTS.md                # OpenCode 指令
+├── CLAUDE.md                # Claude Code 指令
 ├── css/
-│   ├── variables.css        # CSS 变量
-│   └── style.css            # 全局样式
+│   ├── variables.css        # CSS 变量（未从 index.html 加载）
+│   └── style.css            # 全局样式（未从 index.html 加载）
 ├── data/
 │   └── expenses_template.csv # CSV 模板
 ├── docs/
 │   └── 开发计划书.md        # 开发计划
+├── lib/                     # 独立库文件（未从 index.html 加载）
 ├── .gitignore               # Git 忽略配置
 └── README.md               # 本文件
 ```
