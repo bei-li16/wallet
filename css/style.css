@@ -229,6 +229,7 @@ input::placeholder {
   gap: 0.25rem;
   padding: 0.25rem 0.75rem;
   background: var(--color-bg-tertiary);
+  border: 1px solid var(--tag-color, transparent);
   border-radius: var(--radius-xl);
   font-size: 0.75rem;
   color: var(--color-text-secondary);
@@ -428,7 +429,7 @@ input::placeholder {
 /* Category select */
 .category-grid {
   display: grid;
-  grid-template-columns: repeat(4, 1fr);
+  grid-template-columns: repeat(auto-fill, minmax(70px, 1fr));
   gap: 0.5rem;
 }
 
@@ -519,7 +520,7 @@ input::placeholder {
   }
 
   .category-grid {
-    grid-template-columns: repeat(7, 1fr);
+    grid-template-columns: repeat(auto-fill, minmax(80px, 1fr));
   }
 }
 
@@ -592,11 +593,15 @@ input::placeholder {
 /* Batch actions */
 .batch-actions {
   display: flex;
+  flex-wrap: wrap;
+  align-items: center;
   gap: 0.5rem;
   padding: 0.75rem;
   background: var(--color-bg-tertiary);
   border-radius: var(--radius-md);
-  margin-bottom: 1rem;
+  position: sticky;
+  top: 0;
+  z-index: 10;
 }
 
 /* CSV status */

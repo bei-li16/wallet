@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Overview
 
-Wallet is a browser-based consumer spending record management SPA. It runs as a single HTML file with all Vue components, charts, and business logic embedded.
+Wallet is a browser-based consumer spending record management SPA. It runs as a single HTML file with all Vue components, charts, and business logic embedded. CSS is externalized to `css/style.css` (which imports `css/variables.css`), and JS libraries are inlined in the HTML.
 
 ## Running the Application
 
@@ -13,11 +13,12 @@ Open `index.html` directly in a browser (Chrome/Edge recommended for File System
 ## Architecture
 
 ### File Structure
-- `index.html` - **Required**. Complete application (~1270 lines). Contains Vue 3 setup, ECharts chart functions, CSV operations, and all template/CSS/script
-- `css/variables.css` - CSS custom properties (colors, fonts, spacing, shadows, transitions)
-- `css/style.css` - Global styles (imports variables.css), dark theme scrollbar styles and fade animations
+- `index.html` - **Required**. Complete application (~2130 lines). Contains Vue 3 setup, ECharts chart functions, CSV operations, and all template/script
+- `css/variables.css` - CSS custom properties (colors, fonts, spacing, shadows, transitions) - loaded via `css/style.css`
+- `css/style.css` - Global styles, imports variables.css via @import
 - `data/expenses_template.csv` - CSV template for data import/export
 - `docs/` - User documentation and development plan (Chinese)
+- `lib/` - Standalone library copies (not loaded from index.html, for reference)
 
 ### Vue App Structure (in index.html)
 

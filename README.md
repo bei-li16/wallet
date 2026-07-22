@@ -76,17 +76,17 @@
 
 ```
 wallet/
-├── index.html               # 完整应用（～2920行）
+├── index.html               # 完整应用（～2130行）
 ├── AGENTS.md                # OpenCode 指令
 ├── CLAUDE.md                # Claude Code 指令
 ├── css/
-│   ├── variables.css        # CSS 变量（未从 index.html 加载）
-│   └── style.css            # 全局样式（未从 index.html 加载）
+│   ├── variables.css        # CSS 变量（通过 style.css 加载）
+│   └── style.css            # 全局样式（已从 index.html 加载）
 ├── data/
 │   └── expenses_template.csv # CSV 模板
 ├── docs/
 │   └── 开发计划书.md        # 开发计划
-├── lib/                     # 独立库文件（未从 index.html 加载）
+├── lib/                     # 独立库文件（未从 index.html 加载，仅供参考）
 ├── .gitignore               # Git 忽略配置
 └── README.md               # 本文件
 ```

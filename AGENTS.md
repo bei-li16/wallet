@@ -2,9 +2,9 @@
 
 ## Repo
 - Single-page app with **no build system, package manager, or test runner**. Open `index.html` in Chrome/Edge directly.
-- `index.html` (~2920 lines) is the sole entrypoint. All app code, styles, and vendored Vue 3 / ECharts / Day.js are inline. App code starts ~line 1334 (`const { createApp, ... } = Vue`).
-- `css/` and `lib/` exist but **`index.html` does not load them** — edits there have no effect unless you also wire them in.
-- Dark theme only (CSS custom properties in `css/variables.css` but not linked from `index.html`).
+- `index.html` (~2130 lines) is the sole entrypoint. All app code and vendored Vue 3 / ECharts / Day.js are inline. App code starts ~line 630 (`const { createApp, ... } = Vue`).
+- `css/style.css` **is loaded** from `index.html` via `<link>` (it imports `css/variables.css` via `@import`). The `lib/` directory exists but is **not loaded** (standalone copies for reference only).
+- Dark theme only (CSS custom properties in `css/variables.css`).
 
 ## Run & Verify
 - No lint, typecheck, test, or build commands exist. Verify manually in Chrome/Edge (File System Access API required for CSV auto-sync).
