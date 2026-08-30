@@ -1,2 +1,5 @@
 .claude/
 data/expenses.csv
+# desktop app build artifacts
+desktop/build/bin/
+desktop/frontend/wailsjs/

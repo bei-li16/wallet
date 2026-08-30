@@ -1,0 +1,559 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta http-equiv="Content-Security-Policy"
+        content="default-src 'self'; script-src 'self' 'unsafe-eval'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; font-src 'self'">
+  <title>Wallet 记账本</title>
+  <link rel="stylesheet" href="./css/style.css">
+</head>
+<body>
+  <div id="app">
+    <!-- 首页 -->
+    <div v-show="currentTab === 'home'" class="page">
+      <h1 class="page-title">首页</h1>
+
+      <!-- 预算进度 -->
+      <div class="budget-card">
+        <div class="budget-header">
+          <span class="budget-label">本月预算</span>
+          <span class="budget-value">{{ formatAmount(currentMonthTotal) }} / {{ formatAmount(budget) }}</span>
+        </div>
+        <div class="progress-bar">
+          <div
+            class="progress-fill"
+            :class="budgetProgressClass"
+            :style="{ width: Math.min(budgetProgress, 100) + '%' }"
+          ></div>
+        </div>
+        <div v-if="budget > 0" class="text-xs text-gray-400 mt-1 text-right">
+          {{ budgetProgress.toFixed(1) }}% 已使用
+        </div>
+      </div>
+
+      <!-- 快速统计 -->
+      <div class="stat-grid">
+        <div class="stat-card">
+          <div class="stat-label">今日</div>
+          <div class="stat-value">{{ formatAmount(todayTotal) }}</div>
+        </div>
+        <div class="stat-card">
+          <div class="stat-label">本周</div>
+          <div class="stat-value">{{ formatAmount(weekTotal) }}</div>
+        </div>
+        <div class="stat-card">
+          <div class="stat-label">本月</div>
+          <div class="stat-value">{{ formatAmount(currentMonthTotal) }}</div>
+        </div>
+        <div class="stat-card">
+          <div class="stat-label">今年</div>
+          <div class="stat-value">{{ formatAmount(yearTotal) }}</div>
+        </div>
+      </div>
+
+      <!-- 导入/导出 -->
+      <div class="flex gap-2 mb-4">
+        <button class="btn btn-secondary" @click="manualExport">
+          导出CSV
+        </button>
+        <button class="btn btn-secondary" @click="triggerCSVImport">
+          导入CSV
+        </button>
+      </div>
+
+      <!-- 批量删除 -->
+      <div class="batch-controls mb-4">
+        <button
+          v-if="!batchMode && filteredExpenses.length > 0"
+          class="btn btn-secondary"
+          @click="enterBatchMode"
+        >
+          批量删除
+        </button>
+        <div v-if="batchMode" class="batch-actions">
+          <span class="text-sm text-gray-400">已选择 {{ selectedExpenses.length }} / 共 {{ filteredExpenses.length }} 条</span>
+          <button class="btn btn-secondary btn-sm" @click="selectAllInFilter">全选</button>
+          <button class="btn btn-secondary btn-sm" @click="deselectAll">取消全选</button>
+          <button class="btn btn-danger btn-sm" @click="batchDelete">批量删除</button>
+          <button class="btn btn-secondary btn-sm" @click="cancelBatch">退出</button>
+        </div>
+      </div>
+
+      <!-- 类别筛选 -->
+      <div class="chip-group">
+        <span
+          v-for="cat in categories"
+          :key="cat.name"
+          class="tag cursor-pointer"
+          :class="{ active: filterCategory === cat.name }"
+          @click="toggleCategoryFilter(cat.name)"
+          :style="{ '--tag-color': cat.color }"
+        >
+          {{ cat.icon }} {{ cat.name }}
+        </span>
+      </div>
+
+      <div v-if="filterCategory && availableFilterSubcategories.length > 0" class="chip-group">
+        <span
+          class="tag cursor-pointer"
+          :class="{ active: filterSubcategory === null }"
+          @click="setSubcategoryFilter(null)"
+        >
+          全部子类
+        </span>
+        <span
+          v-for="sub in availableFilterSubcategories"
+          :key="sub"
+          class="tag cursor-pointer"
+          :class="{ active: filterSubcategory === sub }"
+          @click="toggleSubcategoryFilter(sub)"
+        >
+          {{ sub }}
+        </span>
+      </div>
+
+      <!-- 最近消费 -->
+      <div class="card">
+        <div class="card-title">最近消费</div>
+      </div>
+
+      <div v-if="loaded && filteredExpenses.length === 0" class="empty-state">
+        <div class="empty-state-icon">📝</div>
+        <div class="empty-state-text">暂无消费记录</div>
+      </div>
+
+      <ul v-else class="expense-list">
+        <li
+          v-for="expense in filteredRecentExpenses"
+          :key="expense.id"
+          class="expense-item"
+          tabindex="0"
+          role="button"
+          @click="editExpense(expense)"
+          @keydown.enter="editExpense(expense)"
+        >
+          <div v-if="batchMode" class="checkbox-wrapper">
+            <input
+              type="checkbox"
+              class="checkbox"
+              :checked="selectedExpenses.includes(expense.id)"
+              @click.stop
+              @change="toggleSelect(expense.id)"
+            >
+          </div>
+          <div
+            class="expense-icon"
+            :style="{ background: getCategoryColor(expense.category) + '20', color: getCategoryColor(expense.category) }"
+          >
+            {{ getCategoryIcon(expense.category) }}
+          </div>
+          <div class="expense-info">
+            <div class="expense-category">{{ expense.category }} - {{ expense.subcategory }}</div>
+            <div v-if="expense.note" class="text-xs text-gray-500">{{ expense.note }}</div>
+            <div class="expense-date">{{ formatDate(expense.date) }}</div>
+          </div>
+          <div class="expense-amount">{{ formatAmount(expense.amount) }}</div>
+          <div v-if="batchMode" class="expense-actions">
+            <button class="delete-btn" @click.stop="deleteExpense(expense.id)">删除</button>
+          </div>
+        </li>
+      </ul>
+    </div>
+
+    <!-- 记一笔 / 编辑 -->
+    <div v-show="currentTab === 'add'" class="page">
+      <h1 class="page-title">{{ editingId ? '编辑记录' : '记一笔' }}</h1>
+
+      <div class="card">
+        <div class="form-group">
+          <label class="form-label">日期</label>
+          <input type="date" v-model="expenseForm.date">
+        </div>
+
+        <div class="form-group">
+          <label class="form-label">金额 (元)</label>
+          <input
+            type="number"
+            v-model.number="expenseForm.amount"
+            placeholder="0.00"
+            step="0.01"
+            min="0"
+          >
+        </div>
+
+        <div class="form-group">
+          <label class="form-label">主类别</label>
+          <div class="category-grid">
+            <button
+              v-for="cat in categories"
+              :key="cat.name"
+              type="button"
+              class="category-btn"
+              :class="{ selected: expenseForm.category === cat.name }"
+              @click="selectCategory(cat.name)"
+            >
+              <span class="category-btn-icon">{{ cat.icon }}</span>
+              <span class="category-btn-name">{{ cat.name }}</span>
+            </button>
+          </div>
+        </div>
+
+        <div class="form-group">
+          <label class="form-label">子类别</label>
+          <div class="chip-group">
+            <span
+              v-for="sub in currentSubcategories"
+              :key="sub"
+              class="tag cursor-pointer"
+              :class="{ active: expenseForm.subcategory === sub }"
+              @click="expenseForm.subcategory = sub"
+            >
+              {{ sub }}
+            </span>
+            <span
+              class="tag cursor-pointer"
+              :class="{ active: expenseForm.subcategory === customSubcategory && !currentSubcategories.includes(customSubcategory) }"
+              @click="showCustomSubcategory = !showCustomSubcategory"
+            >
+              + 自定义
+            </span>
+          </div>
+          <input
+            v-if="showCustomSubcategory"
+            type="text"
+            v-model="customSubcategory"
+            placeholder="输入自定义子类别"
+            class="mt-2"
+            @keyup.enter="confirmAddSubcategory"
+          >
+          <button
+            v-if="showCustomSubcategory && customSubcategory.trim()"
+            class="btn btn-secondary btn-sm mt-2"
+            @click="confirmAddSubcategory"
+          >
+            确认添加
+          </button>
+        </div>
+
+        <div class="form-group">
+          <label class="form-label">备注 (可选)</label>
+          <input
+            type="text"
+            v-model="expenseForm.note"
+            placeholder="添加备注..."
+          >
+        </div>
+
+        <div class="form-row">
+          <button class="btn btn-primary" @click="saveExpense">
+            {{ editingId ? '保存修改' : '添加记录' }}
+          </button>
+          <button v-if="editingId" class="btn btn-secondary" @click="cancelEdit">
+            取消
+          </button>
+        </div>
+
+        <button v-if="editingId" class="btn btn-danger btn-block mt-4" @click="deleteCurrentExpense">
+          删除此记录
+        </button>
+      </div>
+
+      <!-- 子类别管理 -->
+      <div class="card mt-4">
+        <div class="card-title mb-2">子类别管理</div>
+        <div v-for="(subs, mainCat) in subcategories" :key="mainCat" class="mb-3">
+          <div class="text-sm text-gray-400 mb-1">{{ mainCat }}</div>
+          <div class="flex flex-wrap gap-1">
+            <span
+              v-for="sub in subs"
+              :key="sub"
+              class="tag text-xs cursor-pointer"
+            >
+              {{ sub }}
+              <span
+                class="subcategory-delete"
+                @click.stop="deleteSubcategory(mainCat, sub)"
+                aria-label="删除子类别"
+              >
+                ×
+              </span>
+            </span>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- 报表 -->
+    <div v-show="currentTab === 'report'" class="page">
+      <h1 class="page-title">报表</h1>
+
+      <div class="flex justify-between items-center mb-4 flex-wrap gap-2">
+        <div class="period-selector" style="margin-bottom: 0;">
+          <button
+            v-for="p in periods"
+            :key="p.value"
+            class="btn btn-sm"
+            :class="reportPeriod === p.value ? 'btn-primary' : 'btn-secondary'"
+            @click="reportPeriod = p.value"
+          >
+            {{ p.label }}
+          </button>
+        </div>
+
+        <div class="flex gap-2 items-center flex-wrap">
+          <button
+            class="btn btn-sm"
+            :class="reportChartType === 'bar' ? 'btn-primary' : 'btn-secondary'"
+            @click="reportChartType = 'bar'"
+          >
+            柱状图
+          </button>
+          <button
+            class="btn btn-sm"
+            :class="reportChartType === 'pie' ? 'btn-primary' : 'btn-secondary'"
+            @click="reportChartType = 'pie'"
+          >
+            饼图
+          </button>
+
+          <template v-if="reportPeriod === 'all'">
+            <button
+              class="btn btn-sm"
+              :class="reportGranularity === 'month' ? 'btn-primary' : 'btn-secondary'"
+              @click="reportGranularity = 'month'"
+            >
+              按月
+            </button>
+            <button
+              class="btn btn-sm"
+              :class="reportGranularity === 'year' ? 'btn-primary' : 'btn-secondary'"
+              @click="reportGranularity = 'year'"
+            >
+              按年
+            </button>
+          </template>
+
+          <button v-if="reportCategory !== TOTAL_KEY" class="btn btn-secondary btn-sm" @click="reportCategory = TOTAL_KEY">
+            ← 返回
+          </button>
+        </div>
+      </div>
+
+      <!-- 具体周期选择 -->
+      <div v-if="reportPeriod !== 'all' && hasAvailablePeriods" class="mb-4">
+        <select v-model="reportSpecificPeriod" class="period-select">
+          <option value="">全部{{ periodLabel }}</option>
+          <option v-for="p in availablePeriods" :key="p.value" :value="p.value">
+            {{ p.label }}
+          </option>
+        </select>
+      </div>
+
+      <!-- 上期对比 -->
+      <div v-if="reportPeriod !== 'all'" class="card mb-4">
+        <div class="flex justify-between items-center">
+          <div>
+            <div class="text-sm text-gray-400">{{ specificPeriodLabel || periodLabel }} vs 上期</div>
+            <div class="flex gap-4 mt-2">
+              <div>
+                <span class="text-gray-500">本期:</span>
+                <span class="font-bold ml-1">{{ formatAmount(currentPeriodTotal) }}</span>
+              </div>
+              <div>
+                <span class="text-gray-500">上期:</span>
+                <span class="font-bold ml-1">{{ formatAmount(prevPeriodTotal) }}</span>
+              </div>
+            </div>
+          </div>
+          <div
+            class="text-lg font-bold"
+            :class="periodChange >= 0 ? 'text-red-400' : 'text-green-400'"
+          >
+            {{ periodChange >= 0 ? '+' : '' }}{{ periodChange.toFixed(1) }}%
+          </div>
+        </div>
+      </div>
+
+      <!-- 总报汇总 -->
+      <div v-if="reportPeriod === 'all'" class="card mb-4">
+        <div class="flex justify-between items-center">
+          <div>
+            <div class="text-sm text-gray-400">全部消费记录</div>
+            <div class="flex gap-4 mt-2">
+              <div>
+                <span class="text-gray-500">总消费:</span>
+                <span class="font-bold ml-1">{{ formatAmount(totalAllExpenses) }}</span>
+              </div>
+              <div>
+                <span class="text-gray-500">记录数:</span>
+                <span class="font-bold ml-1">{{ expenses.length }} 笔</span>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- 图表 -->
+      <div class="card">
+        <div class="card-title">{{ reportPeriod === 'all' ? '全部消费' : (specificPeriodLabel || periodLabel) }} - {{ reportCategory }}</div>
+        <div v-show="reportChartType === 'bar'" id="barChart" class="chart-container"></div>
+        <div v-show="reportChartType === 'pie'" id="pieChart" class="chart-container"></div>
+      </div>
+    </div>
+
+    <!-- 趋势 -->
+    <div v-show="currentTab === 'trend'" class="page">
+      <h1 class="page-title">趋势分析</h1>
+
+      <!-- 预算设置 -->
+      <div class="card">
+        <div class="card-title">月预算设置</div>
+        <div class="form-row">
+          <input
+            type="number"
+            v-model.number="budget"
+            placeholder="设置月预算..."
+            @change="saveBudget"
+          >
+          <button class="btn btn-primary" @click="saveBudget">保存</button>
+        </div>
+      </div>
+
+      <!-- 消费趋势 -->
+      <div class="card">
+        <div class="card-title">消费趋势</div>
+        <div class="toggle-group mb-4">
+          <button
+            class="toggle-btn"
+            :class="{ active: trendGranularity === 'week' }"
+            @click="trendGranularity = 'week'"
+          >
+            周
+          </button>
+          <button
+            class="toggle-btn"
+            :class="{ active: trendGranularity === 'month' }"
+            @click="trendGranularity = 'month'"
+          >
+            月
+          </button>
+          <button
+            class="toggle-btn"
+            :class="{ active: trendGranularity === 'year' }"
+            @click="trendGranularity = 'year'"
+          >
+            年
+          </button>
+        </div>
+        <div id="trendChart" class="chart-container"></div>
+      </div>
+
+      <!-- 类别占比 -->
+      <div class="card">
+        <div class="card-title">类别占比</div>
+        <div id="categoryChart" class="chart-container"></div>
+      </div>
+
+      <!-- CSV 同步状态 -->
+      <div class="card">
+        <div class="card-title">CSV 数据文件</div>
+        <div class="csv-path" :title="csvPath">
+          {{ csvPath || '未配置同步文件（数据仅存于应用内）' }}
+        </div>
+        <div class="csv-status" :class="{ connected: csvConnected, disconnected: !csvConnected }">
+          <span>{{ csvSyncing ? '⏳' : (csvConnected ? '✓' : '○') }}</span>
+          <span>
+            {{
+              csvSyncing
+                ? '正在同步...'
+                : (csvConnected ? '自动同步已开启 · 上次同步: ' + lastSyncLabel() : '手动模式')
+            }}
+          </span>
+        </div>
+        <div class="flex flex-wrap gap-2 mt-2">
+          <button class="btn btn-sm btn-secondary" @click="configureCsv">
+            {{ csvConnected ? '更改同步文件' : '选择同步文件' }}
+          </button>
+          <button v-if="csvConnected" class="btn btn-sm btn-secondary" @click="disconnectCsv">
+            断开
+          </button>
+          <button v-if="csvConnected" class="btn btn-sm btn-secondary" @click="syncNow">
+            立即同步
+          </button>
+          <button v-if="csvConnected" class="btn btn-sm btn-secondary" @click="openCsvFolder">
+            打开所在文件夹
+          </button>
+          <button class="btn btn-sm btn-secondary" @click="manualExport">导出CSV</button>
+          <button class="btn btn-sm btn-secondary" @click="triggerCSVImport">导入CSV</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- 底部导航 -->
+    <nav class="tab-nav">
+      <div
+        v-for="tab in tabs"
+        :key="tab.id"
+        class="tab-item"
+        :class="{ active: currentTab === tab.id }"
+        @click="switchTab(tab.id)"
+      >
+        <span class="tab-icon">{{ tab.icon }}</span>
+        <span>{{ tab.name }}</span>
+      </div>
+    </nav>
+
+    <!-- 浏览器模式导入用 -->
+    <input type="file" ref="fileInput" accept=".csv" style="display:none" @change="handleFileImport">
+
+    <!-- Toast 通知 -->
+    <div class="toast-container">
+      <div
+        v-for="t in toasts"
+        :key="t.id"
+        class="toast"
+        :class="'toast-' + t.type"
+      >
+        <span class="toast-message">{{ t.message }}</span>
+        <button v-if="t.actionLabel" class="toast-action" @click="toastAction(t)">
+          {{ t.actionLabel }}
+        </button>
+        <button class="toast-close" @click="dismissToast(t.id)">×</button>
+      </div>
+    </div>
+
+    <!-- 确认弹窗 -->
+    <div v-if="confirmModal" class="modal-overlay" @click.self="modalAnswer(false)">
+      <div class="modal">
+        <div class="modal-title">{{ confirmModal.title }}</div>
+        <div class="modal-message">{{ confirmModal.message }}</div>
+        <div class="modal-actions">
+          <button class="btn btn-secondary" @click="modalAnswer(false)">取消</button>
+          <button
+            class="btn"
+            :class="confirmModal.danger ? 'btn-danger' : 'btn-primary'"
+            @click="modalAnswer(true)"
+          >
+            {{ confirmModal.confirmText }}
+          </button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <script src="./js/vendor/vue.global.prod.js"></script>
+  <script src="./js/vendor/dayjs.min.js"></script>
+  <script src="./js/vendor/zh-cn.js"></script>
+  <script src="./js/vendor/isSameOrAfter.js"></script>
+  <script src="./js/vendor/isSameOrBefore.js"></script>
+  <script src="./js/vendor/echarts.min.js"></script>
+  <script src="./js/domain/periods.js"></script>
+  <script src="./js/domain/csv.js"></script>
+  <script src="./js/domain/aggregate.js"></script>
+  <script src="./js/storage.js"></script>
+  <script src="./js/charts.js"></script>
+  <script src="./js/boot.js"></script>
+  <script src="./js/app.js"></script>
+</body>
+</html>
