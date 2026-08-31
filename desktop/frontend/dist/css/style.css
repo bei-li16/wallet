@@ -689,11 +689,77 @@ input::placeholder {
    桌面版补充样式（Toast / 确认弹窗 / CSV 状态卡 / 桌面布局适配）
    ============================================================ */
 
-/* 桌面窗口下内容居中限宽，避免拉伸过宽 */
+/*
+ * 桌面窗口自适应：
+ * - 小窗口保持移动端的全宽布局
+ * - 常规桌面窗口使用流式边距
+ * - 宽屏限制在舒适的阅读宽度，避免内容被压成原先的 760px 窄列
+ */
 .page {
-  max-width: 760px;
+  width: min(100%, 1600px);
+  max-width: none;
   margin: 0 auto;
-  width: 100%;
+  padding-left: clamp(1rem, 3vw, 3.5rem);
+  padding-right: clamp(1rem, 3vw, 3.5rem);
+}
+
+.page > * {
+  min-width: 0;
+}
+
+/* 导航与页面内容使用同一宽度，宽屏下不会把入口拉到屏幕四角。 */
+.tab-nav {
+  left: 50%;
+  right: auto;
+  width: min(100%, 1600px);
+  transform: translateX(-50%);
+  box-shadow: var(--shadow-lg);
+}
+
+@media (min-width: 1200px) {
+  .page {
+    padding-top: clamp(1.25rem, 2vw, 2rem);
+  }
+
+  .card,
+  .budget-card,
+  .stat-card {
+    padding: clamp(1rem, 1.25vw, 1.5rem);
+  }
+
+  .chart-container {
+    height: clamp(360px, 45vh, 560px);
+  }
+}
+
+@media (min-width: 2200px) {
+  html {
+    font-size: clamp(16px, 0.55vw, 20px);
+  }
+
+  .page,
+  .tab-nav {
+    width: min(100%, 1800px);
+  }
+}
+
+@media (max-width: 639px) {
+  .page {
+    padding: 0.75rem;
+    padding-bottom: 4.75rem;
+  }
+
+  .form-row {
+    flex-direction: column;
+  }
+
+  .chart-container {
+    height: 280px;
+  }
+
+  .tab-item {
+    padding: 0.625rem 0.25rem;
+  }
 }
 
 /* 深色细滚动条 */
