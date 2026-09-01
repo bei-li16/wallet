@@ -72,3 +72,5 @@ node tests/test-domain.js   # 领域层测试（需 Node）
 
 `frontend/dist` 也可直接静态托管（如 `python -m http.server`）在浏览器打开：
 此时原生对话框不可用，导入/导出自动降级为文件选择 + 下载，其余功能不变。
+
+go test ./...        # 原生文件桥测试（读写往返/默认路径/目录回退）
