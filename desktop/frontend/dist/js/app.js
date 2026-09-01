@@ -587,6 +587,7 @@
             : f.subcategory;
 
         if (editingId.value) {
+          // 编辑模式：保存后回首页列表
           const index = expenses.value.findIndex((e) => e.id === editingId.value);
           if (index !== -1) {
             expenses.value[index] = {
@@ -599,8 +600,12 @@
             rememberCustomSubcategory();
           }
           editingId.value = null;
+          saveExpenses();
+          resetForm();
           toast('修改已保存', 'success');
+          currentTab.value = 'home';
         } else {
+          // 新增模式：留在记一笔页并重置表单，便于连续记账；首页列表自动更新
           expenses.value.push({
             id: generateId(),
             ...f,
@@ -610,12 +615,10 @@
             updatedAt: Date.now()
           });
           rememberCustomSubcategory();
-          toast('已添加记录', 'success');
+          saveExpenses();
+          resetForm();
+          toast('已添加记录，可继续记下一笔', 'success');
         }
-
-        saveExpenses();
-        resetForm();
-        currentTab.value = 'home';
       }
 
       function editExpense(expense) {
@@ -863,7 +866,22 @@
             const fmt = reportPeriod.value === 'year' ? 'YYYY/MM' : 'MM/DD';
             xAxisLabels = chartData.labels.map((l) => dayjs(l).format(fmt));
           }
-          charts.render('barChart', WalletCharts.barOption(chartData, xAxisLabels, reportPeriod.value !== 'year'));
+          // 柱状图与饼图行为一致：顶层点击柱条下钻到对应主类的子类别
+          const onBarClick =
+            reportCategory.value === TOTAL_KEY
+              ? (params) => {
+                  if (params.componentType !== 'series') return;
+                  const subs = subcategories.value[params.seriesName];
+                  if (subs && subs.length > 0) {
+                    reportCategory.value = params.seriesName;
+                  }
+                }
+              : null;
+          charts.render(
+            'barChart',
+            WalletCharts.barOption(chartData, xAxisLabels, reportPeriod.value !== 'year'),
+            onBarClick
+          );
         } else {
           charts.dispose('barChart');
           const pieData = WalletAggregate.getCategoryPieData(
