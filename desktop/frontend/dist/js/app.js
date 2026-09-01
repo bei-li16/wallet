@@ -186,13 +186,11 @@
         }
 
         const subs = WalletStorage.loadSubcategories();
-        if (subs) {
-          subcategories.value = subs;
-        } else {
-          const r = WalletStorage.KEYS.subcategories;
-          if (localStorage.getItem(r) && WalletStorage.loadExpenses().corrupt) {
-            toast('子类别数据损坏，已恢复默认并备份', 'error');
-          }
+        if (subs.value) {
+          subcategories.value = subs.value;
+        }
+        if (subs.corrupt) {
+          toast('子类别数据损坏，已恢复默认并备份', 'error', { duration: 8000 });
         }
 
         budget.value = WalletStorage.loadBudget();
@@ -213,24 +211,35 @@
       // ---------- CSV 同步 ----------
       const csvConnected = computed(() => !!csvPath.value);
 
-      async function autoSyncCSV() {
-        if (!WalletStorage.isDesktop() || !csvPath.value) return;
-        csvSyncing.value = true;
-        try {
-          const content = WalletCSV.buildCSVContent(expenses.value);
-          await WalletStorage.writeTextFile(csvPath.value, content);
-          lastSyncAt.value = Date.now();
-          WalletStorage.setLastSyncAt(lastSyncAt.value);
-        } catch (e) {
-          console.error('CSV auto sync failed:', e);
-          toast('CSV 自动同步失败：' + e, 'error');
-        } finally {
-          csvSyncing.value = false;
-        }
+      // 串行化写盘：连续快速保存时避免并发写同一文件造成内容交错
+      let syncChain = Promise.resolve(true);
+
+      function autoSyncCSV() {
+        if (!WalletStorage.isDesktop() || !csvPath.value) return Promise.resolve(true);
+        syncChain = syncChain.then(async () => {
+          csvSyncing.value = true;
+          try {
+            const content = WalletCSV.buildCSVContent(expenses.value);
+            await WalletStorage.writeTextFile(csvPath.value, content);
+            lastSyncAt.value = Date.now();
+            WalletStorage.setLastSyncAt(lastSyncAt.value);
+            return true;
+          } catch (e) {
+            console.error('CSV auto sync failed:', e);
+            toast('CSV 自动同步失败：' + e, 'error');
+            return false;
+          } finally {
+            csvSyncing.value = false;
+          }
+        });
+        return syncChain;
       }
 
       async function configureCsv() {
-        if (!WalletStorage.isDesktop()) return;
+        if (!WalletStorage.isDesktop()) {
+          toast('浏览器模式不支持自动同步，请使用导出/导入 CSV', 'info');
+          return;
+        }
         try {
           let suggested = csvPath.value;
           if (!suggested) {
@@ -242,8 +251,8 @@
           if (!picked) return;
           csvPath.value = picked;
           WalletStorage.setCsvPath(picked);
-          await autoSyncCSV();
-          toast('CSV 同步已配置，之后每次改动自动保存', 'success');
+          const ok = await autoSyncCSV();
+          if (ok) toast('CSV 同步已配置，之后每次改动自动保存', 'success');
         } catch (e) {
           console.error('configure csv failed:', e);
         }
@@ -279,14 +288,13 @@
         toast('已断开 CSV 同步');
       }
 
-      function syncNow() {
+      async function syncNow() {
         if (!csvPath.value) {
           configureCsv();
           return;
         }
-        autoSyncCSV().then(() => {
-          if (!csvSyncing.value) toast('已同步', 'success');
-        });
+        const ok = await autoSyncCSV();
+        if (ok) toast('已同步', 'success');
       }
 
       function openCsvFolder() {
@@ -637,9 +645,10 @@
         });
       }
 
+      /** @returns {Promise<boolean>} 是否确实删除 */
       async function deleteExpense(id) {
         const idx = expenses.value.findIndex((e) => e.id === id);
-        if (idx === -1) return;
+        if (idx === -1) return false;
         const record = expenses.value[idx];
         const yes = await confirmDialog({
           title: '删除记录',
@@ -647,17 +656,19 @@
           confirmText: '删除',
           danger: true
         });
-        if (!yes) return;
+        if (!yes) return false;
         expenses.value = expenses.value.filter((e) => e.id !== id);
         saveExpenses();
         stashForUndo([record], '1 条记录');
+        return true;
       }
 
       async function deleteCurrentExpense() {
         if (!editingId.value) return;
         const id = editingId.value;
-        await deleteExpense(id);
-        if (editingId.value === id) {
+        const deleted = await deleteExpense(id);
+        // 仅在确实删除后退出编辑态；用户取消弹窗时停留在编辑页
+        if (deleted) {
           cancelEdit();
         }
       }

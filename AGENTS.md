@@ -21,3 +21,11 @@
 ## Editing
 - **Avoid editing the vendored library blobs** at the top of `index.html`. The app code starts after them.
 - `CLAUDE.md` has detailed verified refs, chart helpers, and storage flows — check it before non-trivial changes.
+
+## Desktop App (desktop-app branch)
+
+- `desktop/` is a **Wails v2** Windows app (Go + system WebView2). Build: `cd desktop && wails build` → `desktop/build/bin/Wallet.exe` (~12MB). Requires Go + Wails CLI; no Node, no admin.
+- Frontend lives in `desktop/frontend/dist/` and is served/embedded as-is (no bundler): `js/domain/` (pure logic: periods/csv/aggregate), `js/storage.js` (localStorage + desktop file bridge), `js/charts.js`, `js/app.js` (Vue). Vendor libs mirror root `lib/`.
+- Run domain golden tests with `node desktop/tests/test-domain.js`.
+- Desktop-only fixes over the web version are listed in `desktop/README.md` (persistent CSV sync path, corrupt-data backup, in-app confirm/toast with undo, ISO week-1 Monday time-of-day fix, ResizeObserver chart resize).
+- The root `index.html` web version remains unchanged and independent.

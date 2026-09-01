@@ -53,6 +53,15 @@
 
   function loadExpenses() {
     const r = safeGetJSON(KEYS.expenses);
+    // 合法 JSON 但不是数组（结构异常）：同样备份原始内容，避免下次保存覆盖
+    if (r.value != null && !Array.isArray(r.value)) {
+      try {
+        localStorage.setItem(`${KEYS.expenses}_invalid_${Date.now()}`, r.raw);
+      } catch (e) {
+        console.error('storage: 异常结构数据备份失败', e);
+      }
+      return { list: [], corrupt: true };
+    }
     return { list: Array.isArray(r.value) ? r.value : [], corrupt: !!r.corrupt };
   }
 
@@ -63,7 +72,8 @@
 
   function loadSubcategories() {
     const r = safeGetJSON(KEYS.subcategories);
-    return r.value && typeof r.value === 'object' ? r.value : null;
+    const value = r.value && typeof r.value === 'object' && !Array.isArray(r.value) ? r.value : null;
+    return { value, corrupt: !!r.corrupt };
   }
 
   function saveSubcategories(obj) {

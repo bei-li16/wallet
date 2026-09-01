@@ -77,6 +77,25 @@ console.log('周期范围：');
   eq(P.getPrevPeriodRange('all', ''), null, "总报无上期 → null");
 }
 
+// ---------- 2.5 周期标签与可用周期推导 ----------
+console.log('周期标签：');
+eq(P.getSpecificPeriodLabel('2026-08', 'month'), '2026年8月', '月份标签');
+eq(P.getSpecificPeriodLabel('2026', 'year'), '2026年', '年份标签');
+eq(P.getSpecificPeriodLabel('2026-W36', 'week'), '2026/08/31 - 2026/09/06', '周标签');
+eq(P.getSpecificPeriodLabel('', 'month'), '', '空具体周期 → 空标签');
+{
+  // 当前月动态计算，避免用例在跨日/跨月时失效
+  const cur = dayjs().format('YYYY-MM');
+  const ap = P.getAvailablePeriods(['2026-07-01', '2026-08-15'], 'month');
+  eq(
+    ap.map((x) => x.value),
+    [...new Set([cur, '2026-08', '2026-07'])],
+    '可用周期：数据推导 + 当前月，最近在前'
+  );
+  eq(ap[0].label, `${cur.slice(0, 4)}年${parseInt(cur.slice(5))}月`, '可用周期带中文标签');
+  eq(P.getAvailablePeriods([], 'month').length, 1, '无数据时仅当前月');
+}
+
 // ---------- 3. CSV 往返 ----------
 console.log('CSV 往返：');
 {

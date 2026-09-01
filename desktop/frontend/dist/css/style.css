@@ -892,3 +892,7 @@ body::-webkit-scrollbar-track {
   to { opacity: 1; }
 }
 .capitalize { text-transform: capitalize; }
+
+/* 子类别删除按钮（原版为 index.html 内联样式，桌面版统一收进 CSS） */
+.subcategory-delete { margin-left: 4px; opacity: 0.6; font-size: 10px; cursor: pointer; }
+.subcategory-delete:hover { opacity: 1; }
