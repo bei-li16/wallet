@@ -14,7 +14,7 @@ Windows 桌面记账应用：Go + 系统 WebView2 壳，前端为无构建的原
 
 | 项 | 网页版 | 桌面版 |
 |---|---|---|
-| CSV 同步 | File System Access API，句柄刷新即丢，每次启动重连 | 同步路径持久化到 localStorage，配置一次后每次改动静默自动写盘 |
+| CSV 同步 | File System Access API，句柄刷新即丢，每次启动重连 | 同步路径持久化；**手动同步**——改动后点「同步」才写盘，卡片显示未同步状态；退出时若有未同步修改弹窗询问（同步并退出/直接退出） |
 | CSV 读写弹窗 | 浏览器 save/open picker | 原生文件对话框（`PickSaveCsv`/`PickOpenCsv`） |
 | 脏数据处理 | JSON 解析失败静默清空 | 先备份原始内容到 `<key>_corrupt_<时间戳>` 再降级，并提示用户 |
 | 确认框/提示 | `alert()` / `confirm()` 原生弹窗 | 应用内确认弹窗 + Toast（删除支持撤销） |

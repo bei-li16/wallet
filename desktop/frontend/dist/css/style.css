@@ -622,6 +622,11 @@ input::placeholder {
   color: var(--color-warning);
 }
 
+.csv-status.dirty {
+  color: var(--color-warning);
+  font-weight: 600;
+}
+
 /* Utility classes (Tailwind-like) */
 .text-xs { font-size: 0.75rem; }
 .text-sm { font-size: 0.875rem; }

@@ -24,6 +24,10 @@ var assets embed.FS
 // App 暴露给前端的原生能力（通过 window.go.main.App 调用）
 type App struct {
 	ctx context.Context
+	// allowExit：前端已处理退出询问（同步/放弃），允许真正退出
+	allowExit bool
+	// unsavedChanges：前端标记的存在未同步 CSV 的数据变动
+	unsavedChanges bool
 }
 
 func NewApp() *App {
@@ -32,6 +36,31 @@ func NewApp() *App {
 
 func (a *App) startup(ctx context.Context) {
 	a.ctx = ctx
+}
+
+// SetUnsynced 前端在数据变动/完成同步后调用，维护"是否有未同步修改"标记
+func (a *App) SetUnsynced(dirty bool) {
+	a.unsavedChanges = dirty
+}
+
+// ResolveExit 前端在用户对退出弹窗做出选择后调用，放行退出
+func (a *App) ResolveExit() {
+	a.allowExit = true
+	wruntime.Quit(a.ctx)
+}
+
+// shouldAskExit 是否需要弹窗询问（干净状态或已放行则直接退出）
+func (a *App) shouldAskExit() bool {
+	return !a.allowExit && a.unsavedChanges
+}
+
+// beforeClose 拦截窗口关闭：有未同步修改时阻止关闭并发事件让前端弹窗询问
+func (a *App) beforeClose(ctx context.Context) bool {
+	if !a.shouldAskExit() {
+		return false // 允许关闭
+	}
+	wruntime.EventsEmit(ctx, "ask-before-exit")
+	return true // 阻止本次关闭，等待前端 ResolveExit
 }
 
 // PickSaveCsv 原生"另存为"对话框；取消返回 ""
@@ -140,6 +169,7 @@ func main() {
 		},
 		BackgroundColour: &options.RGBA{R: 15, G: 23, B: 42, A: 255}, // #0f172a
 		OnStartup:        app.startup,
+		OnBeforeClose:    app.beforeClose,
 		Bind:             []interface{}{app},
 		Windows: &windows.Options{
 			WebviewIsTransparent: false,

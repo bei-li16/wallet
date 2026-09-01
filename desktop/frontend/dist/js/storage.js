@@ -14,7 +14,9 @@
     budget: 'wallet_budget',
     schemaVersion: 'wallet_schema_version',
     csvPath: 'wallet_csv_path',
-    lastSync: 'wallet_last_sync_at'
+    lastSync: 'wallet_last_sync_at',
+    rev: 'wallet_expenses_rev',
+    syncedRev: 'wallet_synced_rev'
   };
   const SCHEMA_VERSION = 1;
 
@@ -110,6 +112,28 @@
     localStorage.setItem(KEYS.lastSync, String(ts));
   }
 
+  // ---------- 手动同步的脏状态跟踪 ----------
+  // rev：每次数据变动 +1（持久化）；syncedRev：最近一次成功同步时的 rev。
+  // 两者不等即存在未同步修改，跨重启依然可判定。
+
+  function getRev() {
+    return parseInt(localStorage.getItem(KEYS.rev)) || 0;
+  }
+
+  function bumpRev() {
+    const r = getRev() + 1;
+    localStorage.setItem(KEYS.rev, String(r));
+    return r;
+  }
+
+  function getSyncedRev() {
+    return parseInt(localStorage.getItem(KEYS.syncedRev)) || 0;
+  }
+
+  function markSynced() {
+    localStorage.setItem(KEYS.syncedRev, String(getRev()));
+  }
+
   // ---------- 桌面文件桥（Wails 绑定） ----------
 
   /**
@@ -171,6 +195,10 @@
     setCsvPath,
     getLastSyncAt,
     setLastSyncAt,
+    getRev,
+    bumpRev,
+    getSyncedRev,
+    markSynced,
     pickSavePath,
     pickOpenPath,
     readTextFile,

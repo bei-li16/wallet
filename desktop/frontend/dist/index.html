@@ -65,13 +65,20 @@
       <!-- CSV 同步管理（与导入导出同区） -->
       <div class="card mb-4">
         <div class="card-title">CSV 数据文件</div>
-        <div class="csv-status" :class="{ connected: csvConnected, disconnected: !csvConnected }">
-          <span>{{ csvSyncing ? '⏳' : (csvConnected ? '✓' : '○') }}</span>
+        <div
+          class="csv-status"
+          :class="{ connected: csvConnected && !dirty, disconnected: !csvConnected, dirty: csvConnected && dirty }"
+        >
+          <span>{{ csvSyncing ? '⏳' : (csvConnected ? (dirty ? '●' : '✓') : '○') }}</span>
           <span>
             {{
               csvSyncing
                 ? '正在同步...'
-                : (csvConnected ? '自动同步已开启 · 上次同步: ' + lastSyncLabel() : '未配置自动同步（手动模式）')
+                : (!csvConnected
+                    ? '未配置自动同步（手动模式）'
+                    : (dirty
+                        ? '有未同步的修改 · 上次同步: ' + lastSyncLabel()
+                        : '已同步 · 上次同步: ' + lastSyncLabel()))
             }}
           </span>
         </div>
@@ -82,11 +89,16 @@
           <button class="btn btn-sm btn-secondary" @click="configureCsv">
             {{ csvConnected ? '更改同步文件' : '选择同步文件' }}
           </button>
+          <button
+            v-if="csvConnected"
+            class="btn btn-sm"
+            :class="dirty ? 'btn-primary' : 'btn-secondary'"
+            @click="syncNow"
+          >
+            {{ dirty ? '同步 ●' : '同步' }}
+          </button>
           <button v-if="csvConnected" class="btn btn-sm btn-secondary" @click="disconnectCsv">
             断开
-          </button>
-          <button v-if="csvConnected" class="btn btn-sm btn-secondary" @click="syncNow">
-            立即同步
           </button>
           <button v-if="csvConnected" class="btn btn-sm btn-secondary" @click="openCsvFolder">
             打开所在文件夹
@@ -535,6 +547,20 @@
           >
             {{ confirmModal.confirmText }}
           </button>
+        </div>
+      </div>
+    </div>
+
+    <!-- 退出询问弹窗（有未同步修改时关闭窗口触发） -->
+    <div v-if="exitModal" class="modal-overlay">
+      <div class="modal">
+        <div class="modal-title">未同步的修改</div>
+        <div class="modal-message">
+          有消费记录的增删改尚未同步到 CSV 文件，直接退出后这些改动不会写入文件。是否先同步？
+        </div>
+        <div class="modal-actions">
+          <button class="btn btn-secondary" @click="exitWithoutSync">直接退出</button>
+          <button class="btn btn-primary" @click="exitWithSync">同步并退出</button>
         </div>
       </div>
     </div>

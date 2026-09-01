@@ -61,3 +61,23 @@ func TestDocumentsDirFallback(t *testing.T) {
 		t.Fatalf("回退目录无效: %q (%v)", dir, err)
 	}
 }
+
+// TestExitGate 验证退出拦截判定：干净态直接关、脏态询问、放行后不再询问
+func TestExitGate(t *testing.T) {
+	app := NewApp()
+	if app.shouldAskExit() {
+		t.Fatal("干净状态不应弹窗询问")
+	}
+	app.SetUnsynced(true)
+	if !app.shouldAskExit() {
+		t.Fatal("有未同步修改应弹窗询问")
+	}
+	app.allowExit = true
+	if app.shouldAskExit() {
+		t.Fatal("已放行后不应再次询问")
+	}
+	app.SetUnsynced(false)
+	if app.shouldAskExit() {
+		t.Fatal("放行后无论脏净都不应询问")
+	}
+}

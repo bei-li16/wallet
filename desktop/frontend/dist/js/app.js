@@ -101,6 +101,10 @@
       const csvPath = ref('');
       const csvSyncing = ref(false);
       const lastSyncAt = ref(0);
+      // 手动同步：rev 随数据变动递增，syncedRev 记录最近一次成功同步的位置
+      const rev = ref(0);
+      const syncedRev = ref(0);
+      const dirty = computed(() => rev.value !== syncedRev.value);
 
       // ---------- 弹窗 / Toast ----------
       const confirmModal = ref(null);
@@ -196,22 +200,35 @@
         budget.value = WalletStorage.loadBudget();
         csvPath.value = WalletStorage.getCsvPath();
         lastSyncAt.value = WalletStorage.getLastSyncAt();
+        rev.value = WalletStorage.getRev();
+        syncedRev.value = WalletStorage.getSyncedRev();
+        pushDirtyToShell();
         loaded.value = true;
       }
 
       function saveExpenses() {
+        // 只写本地存储并标记脏；CSV 由用户点击「同步」时写入
         WalletStorage.saveExpenses(expenses.value);
-        autoSyncCSV();
+        rev.value = WalletStorage.bumpRev();
+        pushDirtyToShell();
+      }
+
+      /** 把脏状态同步给桌面壳（用于退出拦截）；未配置同步文件时无需拦截 */
+      function pushDirtyToShell() {
+        if (WalletStorage.isDesktop()) {
+          const needsAsk = dirty.value && !!csvPath.value;
+          window.go.main.App.SetUnsynced(needsAsk).catch(() => {});
+        }
       }
 
       function saveSubcategories() {
         WalletStorage.saveSubcategories(subcategories.value);
       }
 
-      // ---------- CSV 同步 ----------
+      // ---------- CSV 同步（手动触发） ----------
       const csvConnected = computed(() => !!csvPath.value);
 
-      // 串行化写盘：连续快速保存时避免并发写同一文件造成内容交错
+      // 串行化写盘：连续点击同步时避免并发写同一文件造成内容交错
       let syncChain = Promise.resolve(true);
 
       function autoSyncCSV() {
@@ -223,10 +240,13 @@
             await WalletStorage.writeTextFile(csvPath.value, content);
             lastSyncAt.value = Date.now();
             WalletStorage.setLastSyncAt(lastSyncAt.value);
+            WalletStorage.markSynced();
+            syncedRev.value = rev.value;
+            pushDirtyToShell();
             return true;
           } catch (e) {
-            console.error('CSV auto sync failed:', e);
-            toast('CSV 自动同步失败：' + e, 'error');
+            console.error('CSV sync failed:', e);
+            toast('CSV 同步失败：' + e, 'error');
             return false;
           } finally {
             csvSyncing.value = false;
@@ -252,7 +272,7 @@
           csvPath.value = picked;
           WalletStorage.setCsvPath(picked);
           const ok = await autoSyncCSV();
-          if (ok) toast('CSV 同步已配置，之后每次改动自动保存', 'success');
+          if (ok) toast('已配置同步文件并完成首次写入；之后的改动需点击「同步」写入', 'success');
         } catch (e) {
           console.error('configure csv failed:', e);
         }
@@ -280,11 +300,12 @@
       async function disconnectCsv() {
         const yes = await confirmDialog({
           title: '断开 CSV 同步',
-          message: '断开后本地数据仍保留，但不再自动同步到 CSV 文件。确定断开？'
+          message: '断开后将取消与该文件的关联，本地数据仍保留，可随时重新选择同步文件。确定断开？'
         });
         if (!yes) return;
         csvPath.value = '';
         WalletStorage.setCsvPath('');
+        pushDirtyToShell();
         toast('已断开 CSV 同步');
       }
 
@@ -294,7 +315,28 @@
           return;
         }
         const ok = await autoSyncCSV();
-        if (ok) toast('已同步', 'success');
+        if (ok) toast('已同步到 CSV', 'success');
+      }
+
+      // ---------- 退出拦截（桌面壳 OnBeforeClose → ask-before-exit 事件） ----------
+      const exitModal = ref(false);
+
+      function resolveExit() {
+        if (WalletStorage.isDesktop()) {
+          window.go.main.App.ResolveExit();
+        }
+      }
+
+      /** 同步并退出；写盘失败则留在应用内并提示 */
+      async function exitWithSync() {
+        exitModal.value = false;
+        const ok = await autoSyncCSV();
+        if (ok) resolveExit();
+      }
+
+      function exitWithoutSync() {
+        exitModal.value = false;
+        resolveExit();
       }
 
       function openCsvFolder() {
@@ -952,6 +994,12 @@
       // ---------- 生命周期 ----------
       onMounted(() => {
         loadData();
+        // 桌面壳关闭窗口时若有未同步修改，会发来 ask-before-exit 事件
+        if (WalletStorage.isDesktop() && window.runtime && window.runtime.EventsOn) {
+          window.runtime.EventsOn('ask-before-exit', () => {
+            exitModal.value = true;
+          });
+        }
       });
 
       onUnmounted(() => {
@@ -987,6 +1035,8 @@
         csvPath,
         csvSyncing,
         lastSyncAt,
+        dirty,
+        exitModal,
         loaded,
         fileInput,
         confirmModal,
@@ -1046,7 +1096,9 @@
         toast,
         dismissToast,
         toastAction,
-        modalAnswer
+        modalAnswer,
+        exitWithSync,
+        exitWithoutSync
       };
     }
   }).mount('#app');
