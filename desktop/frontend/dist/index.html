@@ -62,6 +62,38 @@
         </button>
       </div>
 
+      <!-- CSV 同步管理（与导入导出同区） -->
+      <div class="card mb-4">
+        <div class="card-title">CSV 数据文件</div>
+        <div class="csv-status" :class="{ connected: csvConnected, disconnected: !csvConnected }">
+          <span>{{ csvSyncing ? '⏳' : (csvConnected ? '✓' : '○') }}</span>
+          <span>
+            {{
+              csvSyncing
+                ? '正在同步...'
+                : (csvConnected ? '自动同步已开启 · 上次同步: ' + lastSyncLabel() : '未配置自动同步（手动模式）')
+            }}
+          </span>
+        </div>
+        <div class="csv-path" :title="csvPath">
+          {{ csvPath || '未配置同步文件（数据仅存于应用内）' }}
+        </div>
+        <div class="flex flex-wrap gap-2">
+          <button class="btn btn-sm btn-secondary" @click="configureCsv">
+            {{ csvConnected ? '更改同步文件' : '选择同步文件' }}
+          </button>
+          <button v-if="csvConnected" class="btn btn-sm btn-secondary" @click="disconnectCsv">
+            断开
+          </button>
+          <button v-if="csvConnected" class="btn btn-sm btn-secondary" @click="syncNow">
+            立即同步
+          </button>
+          <button v-if="csvConnected" class="btn btn-sm btn-secondary" @click="openCsvFolder">
+            打开所在文件夹
+          </button>
+        </div>
+      </div>
+
       <!-- 批量删除 -->
       <div class="batch-controls mb-4">
         <button
@@ -453,40 +485,6 @@
       <div class="card">
         <div class="card-title">类别占比</div>
         <div id="categoryChart" class="chart-container"></div>
-      </div>
-
-      <!-- CSV 同步状态 -->
-      <div class="card">
-        <div class="card-title">CSV 数据文件</div>
-        <div class="csv-path" :title="csvPath">
-          {{ csvPath || '未配置同步文件（数据仅存于应用内）' }}
-        </div>
-        <div class="csv-status" :class="{ connected: csvConnected, disconnected: !csvConnected }">
-          <span>{{ csvSyncing ? '⏳' : (csvConnected ? '✓' : '○') }}</span>
-          <span>
-            {{
-              csvSyncing
-                ? '正在同步...'
-                : (csvConnected ? '自动同步已开启 · 上次同步: ' + lastSyncLabel() : '手动模式')
-            }}
-          </span>
-        </div>
-        <div class="flex flex-wrap gap-2 mt-2">
-          <button class="btn btn-sm btn-secondary" @click="configureCsv">
-            {{ csvConnected ? '更改同步文件' : '选择同步文件' }}
-          </button>
-          <button v-if="csvConnected" class="btn btn-sm btn-secondary" @click="disconnectCsv">
-            断开
-          </button>
-          <button v-if="csvConnected" class="btn btn-sm btn-secondary" @click="syncNow">
-            立即同步
-          </button>
-          <button v-if="csvConnected" class="btn btn-sm btn-secondary" @click="openCsvFolder">
-            打开所在文件夹
-          </button>
-          <button class="btn btn-sm btn-secondary" @click="manualExport">导出CSV</button>
-          <button class="btn btn-sm btn-secondary" @click="triggerCSVImport">导入CSV</button>
-        </div>
       </div>
     </div>
 
