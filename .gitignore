@@ -5,3 +5,5 @@ desktop/costrecord/
 # desktop app build artifacts
 desktop/build/bin/
 desktop/frontend/wailsjs/
+# 发布物走 GitHub Releases（exe 不入库，仅保留校验和）
+release/*/Wallet.exe

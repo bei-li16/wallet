@@ -62,6 +62,10 @@ wails dev            # 开发模式（热加载）
 node tests/test-domain.js   # 领域层测试（需 Node）
 ```
 
+发布：各版本安装包（`Wallet.exe` + `SHA256SUMS.txt`）发布在
+[GitHub Releases](https://github.com/bei-li16/wallet/releases)，tag 为 `v1.0.x`；
+仓库不再跟踪 exe（`release/*/Wallet.exe` 已 gitignore，仅保留校验和）。
+
 ## 数据与迁移
 
 - 主存储：localStorage（`wallet_expenses` / `wallet_subcategories` / `wallet_budget`，
