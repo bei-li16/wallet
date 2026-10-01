@@ -1,5 +1,9 @@
 .claude/
 data/expenses.csv
+# 个人 CSV 和 Wallet JSON 导出默认不提交，公开示例模板除外
+*.[cC][sS][vV]
+!/data/expenses_template.csv
+[Ww]allet-*.json
 # 个人账本（公开仓库：含消费流水与联系方式，勿提交）
 desktop/costrecord/
 # desktop app build artifacts

@@ -1,0 +1,1160 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="utf-8" />
+    <meta
+      name="viewport"
+      content="width=device-width, initial-scale=1, viewport-fit=cover"
+    />
+    <meta
+      name="theme-color"
+      content="#f4f6fa"
+      media="(prefers-color-scheme: light)"
+    />
+    <meta
+      name="theme-color"
+      content="#10131b"
+      media="(prefers-color-scheme: dark)"
+    />
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-status-bar-style" content="default" />
+    <meta name="apple-mobile-web-app-title" content="Wallet" />
+    <meta
+      name="description"
+      content="把日常，记得清楚。属于你的离线随身账本。"
+    />
+    <title>Wallet · 随身账本</title>
+    <link rel="manifest" href="./manifest.webmanifest" />
+    <link rel="apple-touch-icon" href="./icons/apple-touch-icon.png" />
+    <link rel="icon" href="./icons/icon.svg" type="image/svg+xml" />
+    <link rel="stylesheet" href="./css/app.css" />
+    <script defer src="./js/vendor/vue.global.prod.js"></script>
+    <script defer src="./js/vendor/echarts.min.js"></script>
+    <script defer src="./js/domain/core.js"></script>
+    <script defer src="./js/storage.js"></script>
+    <script defer src="./js/icons.js"></script>
+    <script defer src="./js/charts.js"></script>
+    <script defer src="./js/app.js"></script>
+  </head>
+  <body>
+    <noscript>Wallet 需要启用 JavaScript 才能使用本地账本。</noscript>
+    <div id="app" v-cloak>
+      <div class="boot" v-if="!ready">
+        <div class="app-mark"><w-icon name="wallet"></w-icon></div>
+        <h1>Wallet</h1>
+        <p>{{ loadError || "正在打开你的随身账本…" }}</p>
+        <button v-if="loadError" class="primary" @click="boot">重新尝试</button>
+      </div>
+      <template v-else>
+        <div class="app-content" :inert="sheet || confirm ? true : undefined">
+          <header class="masthead">
+            <a href="./" class="brand" @click.prevent="setTab('home')"
+              ><span class="brand-icon"><w-icon name="wallet"></w-icon></span
+              >Wallet<span class="brand-dot"></span
+            ></a>
+            <div class="header-actions">
+              <button class="profile-pill" :aria-label="'切换用户，当前 ' + activeProfile.name"
+                :disabled="busy" @click="sheet = 'profiles'">
+                <w-icon name="user"></w-icon><span>{{ activeProfile.name }}</span>
+              </button>
+              <span v-if="offline" class="offline-badge">离线</span
+              ><button
+                class="icon-button settings-button"
+                aria-label="设置"
+                @click="sheet = 'settings'"
+              >
+                <w-icon name="settings"></w-icon>
+              </button>
+            </div>
+          </header>
+          <div class="update-banner" v-if="updateReady">
+            <span>新版本已准备好</span
+            ><button @click="updateApp">
+              更新应用 <w-icon name="refresh"></w-icon>
+            </button>
+          </div>
+          <main>
+            <section
+              v-show="tab === 'home'"
+              class="page"
+              aria-labelledby="home-title"
+            >
+              <div class="page-title">
+                <div>
+                  <p class="eyebrow">
+                    {{ Number(now.slice(5, 7)) }} 月 · 日常有数
+                  </p>
+                  <h1 id="home-title">
+                    把日常，记得清楚<span class="title-dot">。</span>
+                  </h1>
+                </div>
+              </div>
+              <article class="balance-card">
+                <div class="card-topline">
+                  <span><span class="live-dot"></span>本月支出</span
+                  ><span class="month-pill"
+                    >{{ now.slice(0, 4) }} / {{ now.slice(5, 7) }}</span
+                  >
+                </div>
+                <p class="big-amount">
+                  <span class="currency">¥</span>{{ C.money(monthTotal) }}
+                </p>
+                <div class="balance-footer">
+                  <span>{{ monthRows.length }} 笔日常，认真记录</span
+                  ><button @click="period='month'; periodKey=C.keyFor('month',now); reportCategory=''; setTab('report')" aria-label="查看本月报表">
+                    <w-icon name="arrow"></w-icon>
+                  </button>
+                </div>
+                <div class="balance-decoration" aria-hidden="true">
+                  <div></div>
+                  <div></div>
+                  <div></div>
+                </div>
+              </article>
+              <div class="summary-grid">
+                <div v-for="s in summary" :key="s.name">
+                  <span>{{ s.name }}支出</span
+                  ><strong><small>¥</small>{{ C.money(s.value) }}</strong>
+                </div>
+              </div>
+              <button class="budget-card card" @click="openBudget">
+                <div class="budget-top">
+                  <span class="budget-label"
+                    ><span class="soft-icon blue"
+                      ><w-icon name="pie"></w-icon></span
+                    >月度预算</span
+                  ><span class="budget-caption"
+                    >{{
+                      state.budgetCents
+                        ? budgetRate > 100
+                          ? "已超出预算"
+                          : "已用 " + budgetRate + "%"
+                        : "设个小目标"
+                    }}<w-icon name="arrow"></w-icon
+                  ></span>
+                </div>
+                <div class="progress-track">
+                  <span
+                    :class="{ over: budgetRate > 100 }"
+                    :style="{
+                      width: state.budgetCents
+                        ? Math.min(budgetRate, 100) + '%'
+                        : '0%',
+                    }"
+                  ></span>
+                </div>
+                <div class="budget-bottom">
+                  <span>{{
+                    state.budgetCents
+                      ? monthTotal > state.budgetCents
+                        ? "超出 ¥" + C.money(monthTotal - state.budgetCents)
+                        : "还可用 ¥" + C.money(state.budgetCents - monthTotal)
+                      : "让每一分，都花得心中有数"
+                  }}</span
+                  ><span v-if="state.budgetCents"
+                    >¥{{ C.money(state.budgetCents) }}</span
+                  >
+                </div>
+              </button>
+              <div class="section-title">
+                <h2>最近账目</h2>
+                <button class="text-button" @click="sheet = 'history'">
+                  全部账目 <w-icon name="arrow"></w-icon>
+                </button>
+              </div>
+              <div v-if="!sorted.length" class="empty card">
+                <div class="empty-art">
+                  <w-icon name="wallet"></w-icon
+                  ><span class="art-spark">＋</span>
+                </div>
+                <h3>从第一笔开始</h3>
+                <p>一杯咖啡，一顿晚餐。<br />小小的记录，让生活更有条理。</p>
+                <button class="primary" @click="setTab('add')">
+                  <w-icon name="plus"></w-icon>记下第一笔
+                </button>
+              </div>
+              <div
+                v-for="group in recentGroups"
+                :key="group.date"
+                class="record-group"
+              >
+                <div class="day-heading">
+                  <span>{{ dateLabel(group.date) }}</span
+                  ><span>¥{{ C.money(group.total) }}</span>
+                </div>
+                <div class="card record-list">
+                  <button
+                    class="record"
+                    v-for="e in group.items"
+                    :key="e.id"
+                    @click="editExpense(e)"
+                  >
+                    <span
+                      class="category-symbol"
+                      :style="{
+                        '--category-color': categoryInfo(e.category).color,
+                      }"
+                      ><w-icon
+                        :name="categoryInfo(e.category).icon"
+                      ></w-icon></span
+                    ><span class="record-copy"
+                      ><strong>{{ e.subcategory || e.category }}</strong
+                      ><span>{{ e.note || e.category }}</span></span
+                    ><span class="record-amount"
+                      >−{{ C.money(e.amountCents) }}</span
+                    ><w-icon class="record-chevron" name="arrow"></w-icon>
+                  </button>
+                </div>
+              </div>
+              <p class="privacy-foot">
+                <w-icon name="shield"></w-icon>账目留在你的设备，日常由你掌握
+              </p>
+            </section>
+
+            <section
+              v-show="tab === 'add'"
+              class="page"
+              aria-labelledby="add-title"
+            >
+              <div class="page-title">
+                <div>
+                  <p class="eyebrow">记录生活里的每一笔</p>
+                  <h1 id="add-title">{{ editing ? "编辑账目" : "记一笔" }}</h1>
+                </div>
+                <button class="text-button" @click="cancelEdit">
+                  {{ editing ? "取消编辑" : "清空" }}
+                </button>
+              </div>
+              <form @submit.prevent="saveExpense" novalidate>
+                <div class="amount-entry card">
+                  <label for="amount">支出金额</label>
+                  <div class="amount-input">
+                    <span>¥</span
+                    ><input
+                      id="amount"
+                      v-model="form.amount"
+                      type="text"
+                      inputmode="decimal"
+                      placeholder="0.00"
+                      autocomplete="off"
+                      maxlength="12"
+                      enterkeyhint="done"
+                      aria-describedby="form-error"
+                    />
+                  </div>
+                  <span class="amount-caption">人民币 CNY</span>
+                </div>
+                <div class="section-title">
+                  <h2>选择分类</h2>
+                  <button
+                    type="button"
+                    class="text-button"
+                    @click="
+                      manageCategory = form.category;
+                      sheet = 'categories';
+                    "
+                  >
+                    管理 <w-icon name="arrow"></w-icon>
+                  </button>
+                </div>
+                <div class="category-grid">
+                  <button
+                    v-for="c in categories"
+                    :key="c.name"
+                    type="button"
+                    class="category-option"
+                    :class="{ active: form.category === c.name }"
+                    :aria-pressed="form.category === c.name"
+                    @click="selectCategory(c.name)"
+                  >
+                    <span
+                      class="category-symbol"
+                      :style="{ '--category-color': c.color }"
+                      ><w-icon :name="c.icon"></w-icon></span
+                    ><span>{{ c.name }}</span
+                    ><span
+                      class="category-check"
+                      v-if="form.category === c.name"
+                      ><w-icon name="check"></w-icon
+                    ></span>
+                  </button>
+                </div>
+                <div class="chips subcategory-chips" aria-label="子分类">
+                  <button
+                    v-for="sub in formSubs"
+                    :key="sub"
+                    type="button"
+                    :class="{ active: form.subcategory === sub }"
+                    :aria-pressed="form.subcategory === sub"
+                    @click="
+                      form.subcategory = form.subcategory === sub ? '' : sub
+                    "
+                  >
+                    {{ sub }}
+                  </button>
+                </div>
+                <div class="card form-group">
+                  <label class="form-row" for="expense-date"
+                    ><span><w-icon name="calendar"></w-icon>日期</span
+                    ><input
+                      id="expense-date"
+                      type="date"
+                      v-model="form.date"
+                      min="1900-01-01"
+                      max="2199-12-31" /></label
+                  ><label class="form-row note-row" for="expense-note"
+                    ><span><w-icon name="note"></w-icon>备注</span
+                    ><textarea
+                      id="expense-note"
+                      v-model="form.note"
+                      placeholder="记下这笔支出的小细节"
+                      rows="2"
+                      maxlength="2000"
+                    ></textarea>
+                  </label>
+                </div>
+                <label class="switch-row" v-if="!editing"
+                  ><span>保存后继续记账</span
+                  ><input
+                    type="checkbox"
+                    v-model="keepAdding"
+                    role="switch" /><span
+                    class="switch"
+                    aria-hidden="true"
+                  ></span
+                ></label>
+                <p
+                  id="form-error"
+                  class="inline-error"
+                  role="alert"
+                  v-if="formError"
+                >
+                  {{ formError }}
+                </p>
+                <button
+                  class="primary save-button"
+                  type="submit"
+                  :disabled="busy"
+                >
+                  <w-icon name="check"></w-icon
+                  >{{
+                    busy ? "正在保存…" : editing ? "保存修改" : "保存这笔账"
+                  }}
+                </button>
+                <button
+                  v-if="editing"
+                  type="button"
+                  class="danger-text delete-record"
+                  @click="remove([editing.id])"
+                  :disabled="busy"
+                >
+                  <w-icon name="trash"></w-icon>删除这笔记录
+                </button>
+                <p class="small-note centered">
+                  保存后即留在本机，离线也能记账
+                </p>
+              </form>
+            </section>
+
+            <section
+              v-show="tab === 'report'"
+              class="page"
+              aria-labelledby="report-title"
+            >
+              <div class="page-title">
+                <div>
+                  <p class="eyebrow">看懂每一分的去向</p>
+                  <h1 id="report-title">支出报表</h1>
+                </div>
+                <span class="title-icon"><w-icon name="report"></w-icon></span>
+              </div>
+              <div class="segmented" aria-label="报表周期">
+                <button
+                  v-for="p in [
+                    { id: 'week', label: '周' },
+                    { id: 'month', label: '月' },
+                    { id: 'year', label: '年' },
+                    { id: 'all', label: '全部' },
+                  ]"
+                  :key="p.id"
+                  :aria-pressed="period === p.id"
+                  :class="{ active: period === p.id }"
+                  @click="period = p.id"
+                >
+                  {{ p.label }}
+                </button>
+              </div>
+              <div class="report-toolbar">
+                <label class="select-wrap" v-if="period !== 'all'"
+                  ><w-icon name="calendar"></w-icon
+                  ><select v-model="periodKey" aria-label="选择报表时间">
+                    <option v-for="key in periodOptions" :value="key">
+                      {{ C.periodLabel(period, key) }}
+                    </option></select
+                  ><w-icon name="down"></w-icon></label
+                ><span v-else class="small-note">全部记账时间</span>
+                <div class="chart-switch" aria-label="图表类型">
+                  <button
+                    :class="{ active: chartType === 'pie' }"
+                    :aria-pressed="chartType === 'pie'"
+                    aria-label="饼图"
+                    @click="chartType = 'pie'"
+                  >
+                    <w-icon name="pie"></w-icon></button
+                  ><button
+                    :class="{ active: chartType === 'bar' }"
+                    :aria-pressed="chartType === 'bar'"
+                    aria-label="柱状图"
+                    @click="chartType = 'bar'"
+                  >
+                    <w-icon name="bars"></w-icon>
+                  </button>
+                </div>
+              </div>
+              <article class="card report-card">
+                <div class="report-card-heading">
+                  <button
+                    v-if="reportCategory"
+                    class="text-button"
+                    @click="reportCategory = ''"
+                  >
+                    <w-icon name="back"></w-icon>全部分类</button
+                  ><span v-else class="muted">本期总支出</span
+                  ><span v-if="reportCategory" class="category-breadcrumb">{{
+                    reportCategory
+                  }}</span>
+                </div>
+                <p class="report-amount">
+                  <small>¥</small>{{ C.money(reportTotal) }}
+                </p>
+                <p class="comparison">{{ comparison }}</p>
+                <div v-if="!reportRows.length" class="chart-empty">
+                  <w-icon name="pie"></w-icon>
+                  <p>这个时间段还没有支出</p>
+                  <span>记下第一笔，就能看到分类统计</span>
+                </div>
+                <div
+                  v-else
+                  class="chart-container"
+                  :class="{ 'donut-container': chartType === 'pie' }"
+                >
+                  <wallet-chart
+                    :kind="chartType"
+                    :groups="reportGroups"
+                    :rows="reportBuckets"
+                    :visible="tab === 'report'"
+                    :label="`${reportCategory || '全部分类'}支出${C.money(reportTotal)}元，下方有分类明细`"
+                    @select="drill"
+                  ></wallet-chart>
+                  <div v-if="chartType === 'pie'" class="donut-center">
+                    <span>{{ reportCategory || "支出分布" }}</span
+                    ><strong>{{ reportRows.length }}<small> 笔</small></strong>
+                  </div>
+                </div>
+                <div
+                  class="chips centered-chips"
+                  v-if="period === 'all' && chartType === 'bar'"
+                >
+                  <button
+                    :class="{ active: granularity === 'month' }"
+                    @click="granularity = 'month'"
+                  >
+                    按月</button
+                  ><button
+                    :class="{ active: granularity === 'year' }"
+                    @click="granularity = 'year'"
+                  >
+                    按年
+                  </button>
+                </div>
+                <p
+                  v-if="reportRows.length && !reportCategory"
+                  class="small-note centered"
+                >
+                  轻点分类，查看具体去向
+                </p>
+              </article>
+              <div class="section-title">
+                <h2>{{ reportCategory ? "子分类明细" : "分类明细" }}</h2>
+                <span class="small-note">{{ reportGroups.length }} 个分类</span>
+              </div>
+              <div class="card breakdown-list">
+                <button
+                  v-for="(g, i) in reportGroups"
+                  :key="g.name"
+                  @click="drill(g.name)"
+                  :disabled="!!reportCategory"
+                  class="breakdown-row"
+                >
+                  <span class="rank">{{ String(i + 1).padStart(2, "0") }}</span>
+                  <div class="breakdown-main">
+                    <div>
+                      <strong>{{ g.name }}</strong
+                      ><span>¥{{ C.money(g.value) }}</span>
+                    </div>
+                    <div class="breakdown-progress">
+                      <span
+                        :style="{
+                          width:
+                            (reportTotal ? (g.value / reportTotal) * 100 : 0) +
+                            '%',
+                          background: g.color,
+                        }"
+                      ></span>
+                    </div>
+                  </div>
+                  <span class="percentage"
+                    >{{
+                      reportTotal
+                        ? ((g.value / reportTotal) * 100).toFixed(1)
+                        : 0
+                    }}%</span
+                  >
+                </button>
+                <p v-if="!reportGroups.length" class="empty-inline">
+                  暂无分类数据
+                </p>
+              </div>
+            </section>
+
+            <section
+              v-show="tab === 'trend'"
+              class="page"
+              aria-labelledby="trend-title"
+            >
+              <div class="page-title">
+                <div>
+                  <p class="eyebrow">发现你的消费节奏</p>
+                  <h1 id="trend-title">日常趋势</h1>
+                </div>
+                <span class="title-icon"><w-icon name="trend"></w-icon></span>
+              </div>
+              <div class="segmented" aria-label="趋势周期">
+                <button
+                  v-for="p in [
+                    { id: 'week', label: '近 8 周' },
+                    { id: 'month', label: '近 12 月' },
+                    { id: 'year', label: '近 5 年' },
+                  ]"
+                  :class="{ active: trendType === p.id }"
+                  :aria-pressed="trendType === p.id"
+                  @click="trendType = p.id"
+                >
+                  {{ p.label }}
+                </button>
+              </div>
+              <article class="card trend-card">
+                <div class="trend-metrics">
+                  <div>
+                    <span class="muted">累计支出</span
+                    ><strong><small>¥</small>{{ C.money(trendTotal) }}</strong>
+                  </div>
+                  <div>
+                    <span class="muted"
+                      >{{
+                        trendType === "week"
+                          ? "周"
+                          : trendType === "month"
+                            ? "月"
+                            : "年"
+                      }}均支出</span
+                    ><strong
+                      ><small>¥</small
+                      >{{
+                        C.money(Math.round(trendTotal / trendRows.length))
+                      }}</strong
+                    >
+                  </div>
+                </div>
+                <wallet-chart
+                  kind="line"
+                  :rows="trendRows"
+                  :visible="tab === 'trend'"
+                  label="支出趋势折线图，可展开下方数据查看每期金额"
+                ></wallet-chart>
+                <details class="chart-details">
+                  <summary>查看每期金额</summary>
+                  <div v-for="r in trendRows" :key="r.start">
+                    <span>{{ r.start }} — {{ r.end }}</span
+                    ><strong>¥{{ C.money(r.value) }}</strong>
+                  </div>
+                </details>
+              </article>
+              <div class="section-title">
+                <h2>年度支出画像</h2>
+                <label class="select-wrap compact"
+                  ><select v-model="annualYear" aria-label="年度支出年份">
+                    <option v-for="year in annualYears" :value="year">
+                      {{ year }} 年
+                    </option></select
+                  ><w-icon name="down"></w-icon
+                ></label>
+              </div>
+              <article class="card annual-card">
+                <div
+                  v-if="annualGroups.length"
+                  class="chart-container donut-container"
+                >
+                  <wallet-chart
+                    kind="pie"
+                    :groups="annualGroups"
+                    :visible="tab === 'trend'"
+                    :label="`${annualYear}年支出分布，下方有金额明细`"
+                  ></wallet-chart>
+                  <div class="donut-center">
+                    <span>{{ annualYear }} 年支出</span
+                    ><strong class="annual-total"
+                      ><small>¥</small>{{ C.money(C.sum(annualRows)) }}</strong
+                    >
+                  </div>
+                </div>
+                <div v-else class="chart-empty">
+                  <w-icon name="trend"></w-icon>
+                  <p>你的年度画像，正在积累</p>
+                  <span>从一笔日常开始</span>
+                </div>
+                <div
+                  v-for="g in annualGroups"
+                  class="annual-legend"
+                  :key="g.name"
+                >
+                  <span
+                    ><i :style="{ background: g.color }"></i>{{ g.name }}</span
+                  ><strong>¥{{ C.money(g.value) }}</strong
+                  ><span
+                    >{{
+                      ((g.value / C.sum(annualRows)) * 100).toFixed(1)
+                    }}%</span
+                  >
+                </div>
+              </article>
+            </section>
+          </main>
+          <nav class="tabbar" aria-label="主导航">
+            <button
+              v-for="t in tabs"
+              :key="t.id"
+              :class="{ active: tab === t.id, 'add-tab': t.id === 'add' }"
+              :aria-current="tab === t.id ? 'page' : undefined"
+              @click="setTab(t.id)"
+            >
+              <span class="tab-icon"><w-icon :name="t.icon"></w-icon></span
+              ><span>{{ t.label }}</span
+              ><i v-if="tab === t.id"></i>
+            </button>
+          </nav>
+        </div>
+
+        <div
+          v-if="sheet"
+          class="sheet-backdrop"
+          @click.self="closeSheet"
+          :inert="confirm ? true : undefined"
+        >
+          <section
+            class="sheet"
+            :class="{ 'history-sheet': sheet === 'history' }"
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="sheet-title"
+            tabindex="-1"
+          >
+            <div class="sheet-grabber" aria-hidden="true"></div>
+            <header class="sheet-header">
+              <button
+                v-if="['categories', 'budget', 'install'].includes(sheet)"
+                class="icon-button"
+                aria-label="返回设置"
+                @click="sheet = 'settings'"
+              >
+                <w-icon name="back"></w-icon>
+              </button>
+              <h2 id="sheet-title">{{ titles[sheet] }}</h2>
+              <button
+                class="icon-button close-button"
+                aria-label="关闭"
+                @click="closeSheet"
+              >
+                <w-icon name="close"></w-icon>
+              </button>
+            </header>
+            <div class="sheet-body">
+              <template v-if="sheet === 'settings'">
+                <div class="settings-brand">
+                  <div class="app-mark"><w-icon name="wallet"></w-icon></div>
+                  <h3>Wallet<span>随身账本</span></h3>
+                  <p>把日常，记得清楚。</p>
+                </div>
+                <p class="group-label">我的账本</p>
+                <div class="card settings-list">
+                  <button @click="sheet = 'profiles'" :disabled="busy">
+                    <span class="soft-icon blue"><w-icon name="user"></w-icon></span>
+                    <span>当前用户</span><small class="profile-name">{{ activeProfile.name }}</small>
+                    <w-icon name="arrow"></w-icon>
+                  </button>
+                  <button @click="openBudget">
+                    <span class="soft-icon blue"
+                      ><w-icon name="pie"></w-icon></span
+                    ><span>月度预算</span
+                    ><small>{{
+                      state.budgetCents
+                        ? "¥" + C.money(state.budgetCents)
+                        : "未设置"
+                    }}</small
+                    ><w-icon name="arrow"></w-icon></button
+                  ><button @click="sheet = 'categories'">
+                    <span class="soft-icon purple"
+                      ><w-icon name="grid"></w-icon></span
+                    ><span>管理子分类</span><w-icon name="arrow"></w-icon>
+                  </button>
+                </div>
+                <p class="group-label">
+                  {{ activeProfile.name }} · 数据与备份 <span>{{ state.expenses.length }} 笔记录</span>
+                </p>
+                <div class="card settings-list">
+                  <button @click="exportBackup">
+                    <span class="soft-icon blue"
+                      ><w-icon name="shield"></w-icon></span
+                    ><span>导出完整备份</span><small>JSON</small
+                    ><w-icon name="arrow"></w-icon></button
+                  ><button v-if="canShare" @click="shareBackup">
+                    <span class="soft-icon green"
+                      ><w-icon name="export"></w-icon></span
+                    ><span>分享完整备份</span
+                    ><w-icon name="arrow"></w-icon></button
+                  ><button @click="exportCSV">
+                    <span class="soft-icon green"
+                      ><w-icon name="export"></w-icon></span
+                    ><span>导出账目 CSV</span
+                    ><w-icon name="arrow"></w-icon></button
+                  ><button @click="beginImport" :disabled="busy">
+                    <span class="soft-icon orange"
+                      ><w-icon name="import"></w-icon></span
+                    ><span>导入 CSV 或完整备份</span
+                    ><w-icon name="arrow"></w-icon></button
+                  ><button @click="restoreRecovery">
+                    <span class="soft-icon purple"
+                      ><w-icon name="refresh"></w-icon></span
+                    ><span>恢复上次导入前的账本</span
+                    ><w-icon name="arrow"></w-icon>
+                  </button>
+                </div>
+                <p class="group-footnote">
+                  导入、导出和恢复仅针对 {{ activeProfile.name }}。完整备份包含该用户的账目、预算和子分类。建议定期保存到“文件”或 iCloud
+                  Drive，以便换机或恢复数据。
+                </p>
+                <p class="group-label">应用</p>
+                <div class="card settings-list">
+                  <button @click="sheet = 'install'">
+                    <span class="soft-icon blue"
+                      ><w-icon name="phone"></w-icon></span
+                    ><span>{{
+                      standalone ? "已在主屏幕运行" : "添加到主屏幕"
+                    }}</span
+                    ><w-icon name="arrow"></w-icon></button
+                  ><button @click="persistStorage">
+                    <span class="soft-icon green"
+                      ><w-icon name="shield"></w-icon></span
+                    ><span>持久存储</span
+                    ><small>{{ persistent ? "已开启" : "申请开启" }}</small
+                    ><w-icon name="arrow"></w-icon></button
+                  ><button @click="updateReady ? updateApp() : checkUpdate()">
+                    <span class="soft-icon purple"
+                      ><w-icon name="refresh"></w-icon></span
+                    ><span>{{
+                      updateReady ? "更新到新版本" : "检查应用更新"
+                    }}</span
+                    ><w-icon name="arrow"></w-icon>
+                  </button>
+                </div>
+                <p class="group-footnote" role="status">
+                  {{
+                    swError ||
+                    (cacheReady
+                      ? "离线资源已就绪 · 无网络也可以使用"
+                      : "正在准备离线资源…")
+                  }}<br />Wallet 1.2.0 · 数据仅保存在当前设备
+                </p>
+              </template>
+              <template v-if="sheet === 'profiles'">
+                <p class="sheet-intro">每位用户都有独立的账目、预算、子分类和导入恢复点。</p>
+                <div class="card profile-list">
+                  <div class="profile-row" v-for="profile in profiles" :key="profile.id"
+                    :class="{ 'profile-current': profile.id === activeProfile.id }">
+                  <button class="profile-switch"
+                    :aria-label="'切换到 ' + profile.name" :aria-pressed="profile.id === activeProfile.id"
+                    :disabled="busy" @click="switchProfile(profile)">
+                    <span class="profile-avatar"><w-icon name="user"></w-icon></span>
+                    <span class="profile-copy"><strong>{{ profile.name }}</strong>
+                      <small>{{ profile.id === activeProfile.id ? '当前使用' : '独立账本' }}</small></span>
+                    <w-icon v-if="profile.id === activeProfile.id" name="check"></w-icon>
+                  </button>
+                  <button class="icon-button profile-edit-button" :aria-label="'编辑用户 ' + profile.name"
+                    :disabled="busy" @click="editProfile(profile)"><w-icon name="edit"></w-icon></button>
+                  </div>
+                </div>
+                <form class="profile-create" @submit.prevent="addProfile">
+                  <label class="field-label" for="new-profile">新增用户</label>
+                  <div class="inline-form">
+                    <input id="new-profile" v-model="newProfileName" class="standalone-input"
+                      placeholder="输入用户名" maxlength="24" autocomplete="off" />
+                    <button class="primary" :disabled="busy || !newProfileName.trim()">创建</button>
+                  </div>
+                </form>
+                <p class="group-footnote">点击右侧编辑按钮可改名或删除用户。改名保留账本；删除会移除该用户全部数据，至少保留一个用户。</p>
+              </template>
+              <template v-if="sheet === 'profile-edit' && editingProfile">
+                <p class="sheet-intro">修改用户名会保留该用户的全部账目、预算和子分类。</p>
+                <form @submit.prevent="saveProfileName">
+                  <label class="field-label" for="profile-name">用户名</label>
+                  <input id="profile-name" v-model="profileNameInput" class="standalone-input"
+                    maxlength="24" autocomplete="off" placeholder="输入用户名" />
+                  <button class="primary full-width" :disabled="busy || !profileNameInput.trim()">保存名称</button>
+                </form>
+                <button class="profile-delete full-width" :disabled="busy || profiles.length <= 1"
+                  @click="removeProfile(editingProfile)"><w-icon name="trash"></w-icon>删除此用户</button>
+                <p class="group-footnote">{{ profiles.length <= 1 ? '至少保留一个用户，当前用户不能删除。' : '删除前会再次确认。建议先导出该用户的 JSON 完整备份。' }}</p>
+                <button class="text-button full-width" :disabled="busy" @click="sheet = 'profiles'">返回用户列表</button>
+              </template>
+              <template v-if="sheet === 'budget'"
+                ><p class="sheet-intro">
+                  为每个月留一点余地。预算会用于本月支出进度，不影响记账。
+                </p>
+                <form @submit.prevent="saveBudget">
+                  <label class="field-label" for="budget">每月预算（元）</label
+                  ><input
+                    id="budget"
+                    class="standalone-input"
+                    v-model="budgetInput"
+                    inputmode="decimal"
+                    placeholder="例如 3000.00"
+                    maxlength="12"
+                  />
+                  <p class="small-note">填写 0 或留空可以关闭预算。</p>
+                  <button class="primary full-width" :disabled="busy">
+                    保存预算
+                  </button>
+                </form></template
+              >
+              <template v-if="sheet === 'categories'"
+                ><label class="field-label" for="manage-category">主分类</label
+                ><select
+                  id="manage-category"
+                  class="standalone-input"
+                  v-model="manageCategory"
+                >
+                  <option v-for="c in categories">{{ c.name }}</option>
+                </select>
+                <div class="card manage-list">
+                  <div
+                    v-for="sub in state.subcategories[manageCategory]"
+                    :key="sub"
+                  >
+                    <span>{{ sub }}</span
+                    ><button
+                      class="icon-button danger-text"
+                      :aria-label="'删除子分类' + sub"
+                      @click="deleteSub(sub)"
+                      :disabled="busy"
+                    >
+                      <w-icon name="trash"></w-icon>
+                    </button>
+                  </div>
+                </div>
+                <form class="inline-form" @submit.prevent="addSub">
+                  <input
+                    v-model="newSub"
+                    class="standalone-input"
+                    placeholder="新的子分类"
+                    aria-label="新的子分类"
+                    maxlength="40"
+                  /><button class="primary" :disabled="busy || !newSub.trim()">
+                    添加
+                  </button>
+                </form>
+                <p class="small-note">
+                  已经用于账目的子分类会保留，避免统计出现缺失。
+                </p></template
+              >
+              <template v-if="sheet === 'install'"
+                ><div class="install-hero">
+                  <span class="app-mark"><w-icon name="wallet"></w-icon></span>
+                  <h3>一个图标，随手记账</h3>
+                  <p>在主屏幕独立打开，更像你熟悉的 App。</p>
+                </div>
+                <ol class="install-steps">
+                  <li>
+                    <span>1</span>
+                    <div>
+                      <strong>用 Safari 打开 Wallet</strong>
+                      <p>首次联网访问，等待离线资源准备完成。</p>
+                    </div>
+                  </li>
+                  <li>
+                    <span>2</span>
+                    <div>
+                      <strong
+                        >打开分享菜单 <w-icon name="export"></w-icon
+                      ></strong>
+                      <p>在 Safari 菜单中选择“添加到主屏幕”。</p>
+                    </div>
+                  </li>
+                  <li>
+                    <span>3</span>
+                    <div>
+                      <strong>添加，然后开始记录</strong>
+                      <p>若出现“作为网页 App 打开”，请保持开启。</p>
+                    </div>
+                  </li>
+                </ol>
+                <div class="info-card">
+                  <w-icon name="info"></w-icon>
+                  <p>
+                    数据留在当前设备。不同手机和浏览器之间不会自动同步，换机前请导出完整备份。
+                  </p>
+                </div></template
+              >
+              <template v-if="sheet === 'history'"
+                ><label class="search-field"
+                  ><w-icon name="search"></w-icon
+                  ><input
+                    v-model="search"
+                    placeholder="搜索备注、分类或日期"
+                    aria-label="搜索账目"
+                    type="search"
+                /></label>
+                <div class="history-filters">
+                  <select v-model="filter" aria-label="筛选分类">
+                    <option value="">全部分类</option>
+                    <option v-for="c in categories">
+                      {{ c.name }}
+                    </option></select
+                  ><select
+                    v-if="filter"
+                    v-model="filterSub"
+                    aria-label="筛选子分类"
+                  >
+                    <option value="">全部子分类</option>
+                    <option v-for="sub in state.subcategories[filter]">
+                      {{ sub }}
+                    </option></select
+                  ><button
+                    class="text-button"
+                    @click="
+                      batch = !batch;
+                      selected = [];
+                    "
+                  >
+                    {{ batch ? "完成" : "选择" }}
+                  </button>
+                </div>
+                <div class="history-count">
+                  <span>{{ history.length }} 笔账目</span
+                  ><strong>¥{{ C.money(historyTotal) }}</strong>
+                </div>
+                <div class="batch-toolbar" v-if="batch">
+                  <button @click="selectAll">
+                    {{
+                      selected.length === history.length && history.length
+                        ? "取消全选"
+                        : "全选筛选结果"
+                    }}</button
+                  ><button
+                    class="danger-text"
+                    :disabled="!selected.length || busy"
+                    @click="remove(selected)"
+                  >
+                    删除 {{ selected.length }} 笔
+                  </button>
+                </div>
+                <div v-if="!history.length" class="empty-inline">
+                  没有符合条件的账目
+                </div>
+                <div
+                  class="record-group"
+                  v-for="g in historyGroups"
+                  :key="g.date"
+                >
+                  <div class="day-heading">
+                    <span>{{ dateLabel(g.date) }}</span
+                    ><span>¥{{ C.money(g.total) }}</span>
+                  </div>
+                  <div class="card record-list">
+                    <button
+                      v-for="e in g.items"
+                      :key="e.id"
+                      class="record"
+                      @click="batch ? toggleSelected(e.id) : editExpense(e)"
+                      :aria-pressed="
+                        batch ? selected.includes(e.id) : undefined
+                      "
+                    >
+                      <span
+                        v-if="batch"
+                        class="selection-circle"
+                        :class="{ selected: selected.includes(e.id) }"
+                        ><w-icon
+                          v-if="selected.includes(e.id)"
+                          name="check"
+                        ></w-icon></span
+                      ><span
+                        class="category-symbol"
+                        :style="{
+                          '--category-color': categoryInfo(e.category).color,
+                        }"
+                        ><w-icon
+                          :name="categoryInfo(e.category).icon"
+                        ></w-icon></span
+                      ><span class="record-copy"
+                        ><strong>{{ e.subcategory || e.category }}</strong
+                        ><span>{{ e.note || e.category }}</span></span
+                      ><span class="record-amount"
+                        >−{{ C.money(e.amountCents) }}</span
+                      >
+                    </button>
+                  </div>
+                </div>
+                <button
+                  class="secondary full-width"
+                  v-if="historyLimit < history.length"
+                  @click="historyLimit += 60"
+                >
+                  显示更多（还有 {{ history.length - historyLimit }} 笔）
+                </button></template
+              >
+              <template v-if="sheet === 'import' && importData"
+                ><p class="import-target"><w-icon name="user"></w-icon>导入到 {{ activeProfile.name }}</p>
+                <p class="small-note" v-if="importData.type === 'backup'">
+                  备份来源：{{ importData.profile ? importData.profile.name : '旧版备份（无用户标识）' }}。确认后仅写入 {{ activeProfile.name }}。
+                </p><p class="import-filename">
+                  <w-icon name="note"></w-icon>{{ importName }}
+                </p>
+                <template v-if="importData.type === 'csv'"
+                  ><div class="import-stats">
+                    <div>
+                      <strong>{{ importPreview.adds.length }}</strong
+                      ><span>新增</span>
+                    </div>
+                    <div>
+                      <strong>{{
+                        importPreview.duplicates +
+                        importData.parsed.duplicateCount
+                      }}</strong
+                      ><span>重复</span>
+                    </div>
+                    <div>
+                      <strong>{{ importPreview.conflicts.length }}</strong
+                      ><span>冲突</span>
+                    </div>
+                    <div>
+                      <strong>{{ importData.parsed.errors.length }}</strong
+                      ><span>无效</span>
+                    </div>
+                  </div>
+                  <p class="sheet-intro">
+                    新增记录会合并到当前账本；重复和无效记录会跳过。同 ID
+                    的不同内容默认保留本机版本。
+                  </p>
+                  <label
+                    class="import-checkbox"
+                    v-if="importPreview.conflicts.some((c) => c.newer)"
+                    ><input type="checkbox" v-model="importNewer" /><span
+                      >使用文件中更新时间更晚的记录覆盖冲突项（{{
+                        importPreview.conflicts.filter((c) => c.newer).length
+                      }}
+                      笔）</span
+                    ></label
+                  >
+                  <details v-if="importData.parsed.errors.length">
+                    <summary>查看无效记录原因</summary>
+                    <p
+                      v-for="e in importData.parsed.errors.slice(0, 30)"
+                      class="small-note"
+                    >
+                      第 {{ e.row }} 条 CSV 记录：{{ e.message }}
+                    </p>
+                  </details>
+                  <details v-if="importPreview.conflicts.length">
+                    <summary>查看冲突记录</summary>
+                    <p
+                      v-for="c in importPreview.conflicts.slice(0, 30)"
+                      class="small-note"
+                    >
+                      {{ c.before.date }} · {{ c.before.category }}：本机 ¥{{
+                        C.money(c.before.amountCents)
+                      }}
+                      / 文件 ¥{{ C.money(c.after.amountCents) }}（{{
+                        c.newer ? "文件较新" : "保留本机"
+                      }}）
+                    </p>
+                  </details></template
+                ><template v-else
+                  ><div class="restore-preview">
+                    <w-icon name="shield"></w-icon>
+                    <h3>完整账本备份</h3>
+                    <p>
+                      {{ importData.state.expenses.length }} 笔记录 · 月预算 ¥{{
+                        C.money(importData.state.budgetCents)
+                      }}
+                    </p>
+                    <span>包含自定义子分类</span>
+                  </div>
+                  <p class="sheet-intro">
+                    恢复完整备份会替换当前账本。替换前会自动保留一个本地恢复点。
+                  </p></template
+                ><button
+                  class="primary full-width"
+                  :disabled="busy"
+                  @click="applyImport"
+                >
+                  {{
+                    busy
+                      ? "正在导入…"
+                      : importData.type === "csv"
+                        ? "确认导入"
+                        : "恢复完整备份"
+                  }}
+                </button></template
+              >
+            </div>
+          </section>
+        </div>
+        <div v-if="confirm" class="confirm-backdrop">
+          <section
+            class="confirm-dialog"
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="confirm-title"
+            aria-describedby="confirm-body"
+            tabindex="-1"
+          >
+            <h2 id="confirm-title">{{ confirm.title }}</h2>
+            <p id="confirm-body">{{ confirm.body }}</p>
+            <div>
+              <button @click="answer(false)">取消</button
+              ><button
+                :class="{ 'danger-text': confirm.danger }"
+                @click="answer(true)"
+              >
+                {{ confirm.action }}
+              </button>
+            </div>
+          </section>
+        </div>
+        <div v-if="toast" class="toast" role="status">
+          <span>{{ toast.message }}</span
+          ><button v-if="toast.undo" @click="toast.undo()" :disabled="busy">
+            撤销
+          </button>
+        </div>
+        <input
+          type="file"
+          ref="importInput"
+          accept=".csv,.json,text/csv,application/json"
+          @change="readImport"
+          hidden
+        />
+      </template>
+    </div>
+  </body>
+</html>

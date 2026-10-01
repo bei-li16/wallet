@@ -1,0 +1,25 @@
+<!doctype html>
+<html lang="zh-CN">
+  <meta charset="utf-8" /><title>Wallet storage verification</title
+  ><style>
+    body {
+      font: 16px system-ui;
+      padding: 30px;
+      max-width: 900px;
+    }
+    pre {
+      white-space: pre-wrap;
+      line-height: 1.8;
+    }
+    button {
+      padding: 12px 20px;
+    }
+  </style>
+  <h1>IndexedDB transaction verification</h1>
+  <p>Uses a uniquely named test database, never the application database.</p>
+  <button id="run">Run storage tests</button>
+  <pre id="result" role="status">Ready</pre>
+  <script src="../js/domain/core.js"></script>
+  <script src="../js/storage.js"></script>
+  <script src="storage-browser.js"></script>
+</html>
