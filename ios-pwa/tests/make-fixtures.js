@@ -6,13 +6,14 @@ const dir = path.join(__dirname, "fixtures");
 fs.mkdirSync(dir, { recursive: true });
 const now = C.today(),
   records = [];
+const amounts = { 餐饮: 2850, 交通: 600, 购物: 12900, 居住: 220000, 娱乐: 4500, 医疗: 3800, AI: 19900, 其他: 2000 };
 for (let i = 0; i < 76; i++) {
-  const cat = C.CATEGORIES[i % 7].name,
+  const cat = C.CATEGORIES[i % C.CATEGORIES.length].name,
     date = i < 21 ? C.addDays(now, -i) : C.shiftMonth(now, -(i - 20));
   records.push(
     C.normalizeRecord({
       id: "fixture-" + i,
-      amountCents: [2850, 600, 12900, 220000, 4500, 3800, 2000][i % 7],
+      amountCents: amounts[cat],
       category: cat,
       subcategory: C.SUBS[cat][0],
       date,

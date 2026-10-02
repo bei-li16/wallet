@@ -158,3 +158,45 @@ test('backup validation rejects missing identity or invalid timestamps without i
   const state = C.initialState();
   for (const props of [{id:''},{id:123},{updatedAt:'invalid'},{createdAt:0}]) assert.throws(() => C.validateState({...state, expenses:[{...row(),...props}]}));
 });
+
+test('AI records retain their category through CSV, JSON, import and report aggregation', () => {
+  const records = [
+    row({ category: 'AI', subcategory: '订阅', amountCents: 19900 }),
+    row({ id: 'api', category: 'AI', subcategory: 'API 用量', amountCents: 3000 }),
+  ];
+  assert.deepEqual(C.parseCSV(C.toCSV(records)).records, records);
+  const state = C.initialState();
+  C.mergeCSV(state, [...records, row({ id: 'custom', category: 'AI', subcategory: 'ChatGPT', amountCents: 100 })]);
+  assert.ok(state.subcategories.AI.includes('ChatGPT'));
+  assert.deepEqual(C.readBackup(C.makeBackup(state, { id: 'user1', name: 'AI 账本' })), state);
+  assert.deepEqual(C.breakdown(records).map(({ name, value }) => ({ name, value })), [{ name: 'AI', value: 22900 }]);
+  assert.deepEqual(C.buckets(records, 'all', '', 'month', 'AI')[0].parts, { 订阅: 19900, 'API 用量': 3000 });
+});
+
+test('seven-category snapshots and both backup versions gain AI without changing legacy data', () => {
+  const legacy = C.initialState();
+  legacy.expenses = [row()]; legacy.budgetCents = 300000; legacy.revision = 42;
+  legacy.subcategories.餐饮.push('旧自定义分类');
+  delete legacy.subcategories.AI;
+  const before = C.clone(legacy), upgraded = C.validateState(legacy);
+  assert.deepEqual(legacy, before, 'validation must not mutate stored raw data');
+  assert.deepEqual(upgraded, { ...legacy, subcategories: { ...legacy.subcategories, AI: C.SUBS.AI } });
+  for (const version of [1, 2]) {
+    const backup = { format: 'wallet-ios-pwa', version, data: legacy };
+    if (version === 2) backup.profile = { id: 'user1', name: '旧账本' };
+    assert.deepEqual(C.readBackup(JSON.stringify(backup)), upgraded);
+  }
+});
+
+test('AI defaults never overwrite explicit custom or empty lists or conceal invalid data', () => {
+  const state = C.initialState();
+  state.subcategories.AI = [];
+  assert.deepEqual(C.validateState(state).subcategories.AI, []);
+  state.subcategories.AI = ['ChatGPT'];
+  assert.deepEqual(C.validateState(state).subcategories.AI, ['ChatGPT']);
+  for (const invalid of [undefined, null, '订阅', [''], ['订阅', '订阅']]) {
+    assert.throws(() => C.validateState({ ...state, subcategories: { ...state.subcategories, AI: invalid } }));
+  }
+  delete state.subcategories.餐饮;
+  assert.throws(() => C.validateState(state), 'other missing categories still indicate invalid data');
+});

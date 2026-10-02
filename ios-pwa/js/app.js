@@ -84,7 +84,7 @@
         () => state.value.subcategories[form.value.category] || [],
       );
       const categoryInfo = (name) =>
-        categories.find((c) => c.name === name) || categories[6];
+        categories.find((c) => c.name === name) || categories.find((c) => c.name === "其他");
       function notify(message, undo = null) {
         clearTimeout(toastTimer);
         toast.value = { message, undo };

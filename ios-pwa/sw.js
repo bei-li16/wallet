@@ -1,6 +1,6 @@
 /* Release the entire shell together; a waiting worker activates only on user request. */
 "use strict";
-const VERSION = "1.2.0-3";
+const VERSION = "1.3.0-1";
 const BASE = new URL("./", self.location.href);
 const PREFIX = "wallet-pwa:" + BASE.pathname + ":";
 const CACHE = PREFIX + VERSION;

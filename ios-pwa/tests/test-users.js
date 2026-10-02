@@ -94,6 +94,29 @@ test('CRUD, budget, subcategories, and same IDs stay with their active user', as
   assert.equal(h.states.get('user2').expenses[0].note, 'user2 record');
 });
 
+test('AI entries and custom subcategories support CRUD independently for each user', async () => {
+  const h = harness(), u = h.ui; await u.boot();
+  assert.equal(u.categoryInfo('unknown').name, '其他');
+  u.selectCategory('AI'); u.form.value.subcategory = '订阅';
+  await save(u, '20', 'user1 AI');
+  u.manageCategory.value = 'AI'; u.newSub.value = 'ChatGPT'; await u.addSub();
+  const id = u.state.value.expenses[0].id;
+  await choose(h, 'user2');
+  assert.deepEqual(u.state.value.subcategories.AI, C.SUBS.AI);
+  u.selectCategory('AI'); u.form.value.subcategory = 'API 用量';
+  await save(u, '3', 'user2 API');
+  const other = C.clone(h.states.get('user2'));
+  await choose(h, 'user1');
+  assert.ok(u.state.value.subcategories.AI.includes('ChatGPT'));
+  await u.editExpense(u.state.value.expenses[0]); u.form.value.amount = '30'; await u.saveExpense();
+  const deleting = u.remove([id]); u.answer(true); await deleting;
+  assert.equal(u.state.value.expenses.length, 0);
+  await u.toast.value.undo();
+  assert.equal(u.state.value.expenses[0].amountCents, 3000);
+  assert.equal(u.state.value.expenses[0].category, 'AI');
+  assert.deepEqual(h.states.get('user2'), other);
+});
+
 test('renaming keeps user identity and all ledger data, and rejects duplicate names', async () => {
   const h = harness(), u = h.ui; await u.boot(); await save(u, '15', 'kept');
   const before = C.clone(u.state.value);

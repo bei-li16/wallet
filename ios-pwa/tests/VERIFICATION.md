@@ -2,6 +2,16 @@
 
 验证环境：Windows，Node.js 24.14.1，Codex 内置 Chromium 浏览器。数据操作测试使用独立临时数据库或专用测试端口上的合成账目；现有预览地址另做保留旧记录的升级核对。
 
+## 1.3.0 AI 分类验收（2026-10-02）
+
+- 32 项 Node 检查和实际 Vue 模板编译通过。新增 AI CSV/JSON 往返、自定义子分类导入与统计、旧七类快照及 JSON v1/v2 兼容、显式空/自定义 AI 列表保留、无效列表拒绝，以及实际 Vue setup 的 AI 增删改/撤销和用户隔离检查。
+- `tests/storage.html`：40 项真实 IndexedDB 检查通过。使用缺少 AI 的旧七类数据验证 v1 升级及已有 v2 账本/恢复点读取，保留原账目、预算、自定义子分类；读取不修改原始快照。AI CSV 导入后关闭重开可保留新记录和子分类，另一用户的空 AI 列表及预算原样保留。
+- 独立 localhost `18773` 合成账本：user1 保存 199 元 AI 订阅，报表显示 AI 199 元及订阅下钻，历史 AI 筛选可达；user2 保存 3 元 API 用量后切回 user1，原 199 元保留。AI 管理中可新增 ChatGPT 子分类。
+- 移动界面实际 DOM 宽度 375，`scrollWidth === clientWidth`，八个大分类、AI 图标、三个默认子分类和自定义项均可见。截图 `tests/artifacts/ai-category-mobile.png` 使用合成账本；控制台无 JavaScript 错误。
+- 停止 `18773` 测试服务并通过独立 HTTP 请求确认连接失败后，应用仍可重新加载、显示 AI 及自定义子分类，保存 10 元离线 AI 记录后再次重载，user1 两笔共 209 元保留。该 localhost 安全上下文验收不替代 iPhone 真机验证。
+- 发布包 `wallet-ios-pwa-1.3.0-1.zip`：23 个条目、489732 字节；CRC、运行时清单、源文件逐字节一致性及用户数据/测试文件排除检查通过。SHA-256：`360b5aba1f5c4fb8146831cd20d331b7f2490d91cdb31a7c1469f7e57c79e33b`。
+- Windows HTTP/HTTPS 已更新为 `1.3.0-1`，保留 `192.168.1.3:18769` 和 `:18770` 及原 CA；22 个 HTTP 发布文件的响应散列匹配清单，完整证书校验的 TLS 1.3 健康检查通过。未操作手机账本、实际用车 CSV 或 Windows 根证书信任库。
+
 ## 1.2.0 用户管理与图表滚动验收（2026-10-01）
 
 - `node --test ios-pwa/tests/test-domain.js ios-pwa/tests/test-shell.js ios-pwa/tests/test-users.js ios-pwa/tests/test-charts.js`：28 项通过；实际 Vue 模板编译通过。新增改名保留账本/固定 ID、删除确认取消、仅清除目标用户、当前用户删除后清空草稿/筛选/选择、其他窗口删除的异步操作失效，以及移动宽度时间轴缩放和 HTML 提示框注入转义检查。

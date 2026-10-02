@@ -12,6 +12,7 @@
     { name: "居住", icon: "home", color: "#9b85d7" },
     { name: "娱乐", icon: "game", color: "#51b7a1" },
     { name: "医疗", icon: "heart", color: "#e97a7b" },
+    { name: "AI", icon: "ai", color: "#6878d8" },
     { name: "其他", icon: "grid", color: "#8b97a7" },
   ];
   const SUBS = {
@@ -21,6 +22,7 @@
     居住: ["房租", "水电", "物业", "装修"],
     娱乐: ["电影", "游戏", "旅游", "运动"],
     医疗: ["门诊", "买药", "体检"],
+    AI: ["订阅", "API 用量", "其他"],
     其他: ["礼品", "捐赠", "其它"],
   };
   const HEADERS = [
@@ -195,7 +197,11 @@
     state.budgetCents = raw.budgetCents;
     state.revision = Number.isSafeInteger(raw.revision) ? raw.revision : 0;
     for (const c of CATEGORIES) {
-      const subs = raw.subcategories && raw.subcategories[c.name];
+      // Pre-1.3 snapshots and recovery points have seven categories. Add only
+      // the missing new category; preserve explicit lists, including [] and errors.
+      const subs = c.name === "AI" && raw.subcategories &&
+        !Object.prototype.hasOwnProperty.call(raw.subcategories, c.name)
+        ? SUBS.AI : raw.subcategories && raw.subcategories[c.name];
       if (
         !Array.isArray(subs) ||
         subs.some((s) => typeof s !== "string" || !s.trim() || s.length > 40) ||

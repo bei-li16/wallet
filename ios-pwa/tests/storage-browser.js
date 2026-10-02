@@ -8,7 +8,7 @@ document.querySelector("#run").onclick = async () => {
     name = "wallet-disposable-test-" + crypto.randomUUID(),
     a = new WalletStore(name),
     b = new WalletStore(name);
-  const profileName = name + "-profiles", corruptName = name + "-corrupt", managementName = name + "-management";
+  const profileName = name + "-profiles", corruptName = name + "-corrupt", managementName = name + "-management", categoryName = name + "-categories";
   const connections = [a, b];
   const seedLegacy = (database, state, recovery) => new Promise((resolve, reject) => {
     const request = indexedDB.open(database, 1);
@@ -109,12 +109,13 @@ document.querySelector("#run").onclick = async () => {
     legacy.budgetCents = 10000;
     legacy.subcategories.餐饮.push("user1-only");
     prior.expenses = [row("legacy-recovery")];
+    delete legacy.subcategories.AI; delete prior.subcategories.AI;
     await seedLegacy(profileName, legacy, prior);
     const u1 = new WalletStore(profileName, "user1"), u2 = new WalletStore(profileName, "user2"),
       otherTab = new WalletStore(profileName, "user1");
     connections.push(u1, u2, otherTab);
     await u1.open(); await u2.open(); await otherTab.open();
-    assert(JSON.stringify(await u1.load()) === JSON.stringify(legacy), "v1 state migrates intact to user1");
+    assert(JSON.stringify(await u1.load()) === JSON.stringify(C.validateState(legacy)), "seven-category v1 state migrates intact to user1 and gains AI");
     assert((await u1.recovery()).expenses[0].id === "legacy-recovery", "legacy recovery migrates to user1");
     assert((await u2.load()).expenses.length === 0 && (await u2.recovery()) === null, "user2 starts empty without user1 recovery");
     assert((await u1.profiles()).map((p) => p.name).join() === "user1,user2", "default users persist in profile registry");
@@ -230,12 +231,38 @@ document.querySelector("#run").onclick = async () => {
     });
     assert(corruptRejected && JSON.stringify(raw) === JSON.stringify(corrupt),
       "migration preserves corrupt legacy bytes instead of silently replacing them with an empty ledger");
+    const c1 = new WalletStore(categoryName), c2 = new WalletStore(categoryName, "user2");
+    connections.push(c1, c2); await c1.open(); await c2.open();
+    const own = C.initialState(); own.subcategories.AI = []; own.budgetCents = 500;
+    await new Promise((resolve, reject) => {
+      const tx = c1.db.transaction("wallet", "readwrite"), wallet = tx.objectStore("wallet");
+      wallet.put(legacy, c1.stateKey); wallet.put(prior, c1.recoveryKey); wallet.put(own, c2.stateKey);
+      tx.oncomplete = resolve; tx.onabort = tx.onerror = () => reject(tx.error);
+    });
+    assert(JSON.stringify(await c1.load()) === JSON.stringify(C.validateState(legacy)) &&
+      JSON.stringify((await c1.recovery()).subcategories.AI) === JSON.stringify(C.SUBS.AI),
+      "existing v2 ledger and recovery gain AI while preserving original data");
+    const rawLegacy = await new Promise((resolve) => {
+      const request = c1.db.transaction("wallet").objectStore("wallet").get(c1.stateKey);
+      request.onsuccess = () => resolve(request.result);
+    });
+    assert(JSON.stringify(rawLegacy) === JSON.stringify(legacy), "reading an old ledger never modifies the raw snapshot");
+    const ai = { ...row("ai-subscription"), category: "AI", subcategory: "ChatGPT", amountCents: 19900 };
+    await c1.mutate((s) => C.mergeCSV(s, C.parseCSV(C.toCSV([ai])).records), true);
+    assert((await c1.load()).expenses.some((e) => e.category === "AI" && e.amountCents === 19900) &&
+      (await c1.load()).subcategories.AI.includes("ChatGPT") &&
+      (await c1.recovery()).expenses[0].id === "same-id",
+      "AI CSV import commits with custom subcategory and retains a compatible recovery point");
+    c1.db.close(); c1.db = null; await c1.open();
+    assert((await c1.load()).subcategories.AI.includes("ChatGPT") &&
+      JSON.stringify(await c2.load()) === JSON.stringify(own),
+      "AI data persists across reopening without modifying another user's explicit empty list or budget");
     out.textContent += `\n${passed} / ${passed} PASSED`;
   } catch (e) {
     out.textContent += "\nFAILED: " + e.stack;
   } finally {
     connections.forEach((store) => store.close());
-    for (const database of [name, profileName, corruptName, managementName]) indexedDB.deleteDatabase(database);
+    for (const database of [name, profileName, corruptName, managementName, categoryName]) indexedDB.deleteDatabase(database);
     button.disabled = false;
   }
 };
