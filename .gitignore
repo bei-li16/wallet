@@ -4,6 +4,8 @@ data/expenses.csv
 *.[cC][sS][vV]
 !/data/expenses_template.csv
 [Ww]allet-*.json
+# PWA 完整备份：用户名_全部_年月日_时分秒.json
+*_全部_????????_??????.[jJ][sS][oO][nN]
 # 个人账本（公开仓库：含消费流水与联系方式，勿提交）
 desktop/costrecord/
 # desktop app build artifacts

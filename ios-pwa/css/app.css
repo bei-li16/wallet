@@ -863,6 +863,53 @@ strong {
 .subcategory-chips {
   margin: 20px 0 25px;
 }
+.export-category-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+}
+.export-category {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 50px;
+  padding: 10px 12px;
+  background: var(--card);
+  border: 1px solid var(--line);
+  border-radius: 14px;
+  font-size: 13px;
+  cursor: pointer;
+}
+.export-category.active {
+  background: var(--accent-soft);
+  border-color: var(--accent);
+}
+.export-category input {
+  flex: 0 0 auto;
+  width: 18px;
+  height: 18px;
+  accent-color: var(--accent);
+}
+.export-category small {
+  margin-left: auto;
+  color: var(--secondary);
+  font-size: 11px;
+  white-space: nowrap;
+}
+.export-summary {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 18px;
+  margin-top: 18px;
+  font-size: 14px;
+}
+.export-filename {
+  color: var(--secondary);
+  font-size: 12px;
+  line-height: 1.7;
+  overflow-wrap: anywhere;
+}
 .form-group {
   padding: 0 18px;
 }

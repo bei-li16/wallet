@@ -9,9 +9,14 @@ const C = require('../js/domain/core.js');
 const source = fs.readFileSync(path.join(__dirname, '../js/app.js'), 'utf8');
 const tick = () => new Promise(setImmediate);
 const deferred = () => { let resolve; const promise = new Promise((r) => resolve = r); return { promise, resolve }; };
-function harness(session = new Map()) {
+function harness(session = new Map(), clock = null) {
   let ui, mounted;
-  const states = new Map(), recoveries = new Map(), instances = [], downloads = [];
+  const states = new Map(), recoveries = new Map(), instances = [], downloads = [], blobs = new Map();
+  class TestURL extends URL {
+    static createObjectURL(blob) { const url = 'blob:wallet-test-' + blobs.size; blobs.set(url, blob); return url; }
+    static revokeObjectURL(url) { blobs.delete(url); }
+  }
+  const navigator = { onLine: true };
   const users = [{ id: 'user1', name: 'user1' }, { id: 'user2', name: 'user2' }];
   class Store {
     constructor(name, profileId = 'user1') { this.profileId = profileId; instances.push(this); }
@@ -48,10 +53,14 @@ function harness(session = new Map()) {
     }
   }
   const context = {
-    WalletCore: C, WalletStore: Store, WalletIcon: {}, WalletChart: {}, URL, Blob,
+    WalletCore: C, WalletStore: Store, WalletIcon: {}, WalletChart: {}, URL: TestURL, Blob, File,
+    Date: clock ? class extends Date {
+      constructor(...args) { super(...(args.length ? args : [clock.now.getTime()])); }
+      static now() { return clock.now.getTime(); }
+    } : Date,
     setTimeout: () => 1, clearTimeout() {}, setInterval() {},
     sessionStorage: { getItem: (key) => session.get(key) || null, setItem: (key, value) => session.set(key, value), removeItem: (key) => session.delete(key) },
-    location: { href: 'https://wallet.test/ios-pwa/', reload() {} }, navigator: { onLine: true },
+    location: { href: 'https://wallet.test/ios-pwa/', reload() {} }, navigator,
     matchMedia: () => ({ matches: false }),
     window: { scrollTo() {}, addEventListener() {} },
     document: { addEventListener() {}, body: { appendChild() {} },
@@ -63,7 +72,7 @@ function harness(session = new Map()) {
     },
   };
   vm.runInNewContext(source, context);
-  return { ui, states, recoveries, instances, users, downloads, session, Store, mounted: () => mounted() };
+  return { ui, states, recoveries, instances, users, downloads, blobs, navigator, session, Store, mounted: () => mounted() };
 }
 async function save(ui, amount, note) {
   ui.form.value.amount = amount; ui.form.value.note = note;
@@ -252,7 +261,7 @@ test('pending user switch cannot open an old-record editor or replace its confir
 test('update drafts and current user survive reload per tab; exports identify only that user', async () => {
   const h = harness(), u = h.ui; await u.boot(); await choose(h, 'user2');
   await save(u, '42', 'two');
-  u.exportBackup(); u.exportCSV();
+  u.exportBackup(); u.beginCSVExport(); u.exportCSV();
   assert.match(h.downloads[0].download, /user2.*\.json$/);
   assert.match(h.downloads[1].download, /user2.*\.csv$/);
   u.form.value.amount = '7.89';
@@ -264,4 +273,72 @@ test('update drafts and current user survive reload per tab; exports identify on
   assert.equal(reloaded.ui.form.value.amount, '7.89');
   const otherTab = harness(); await otherTab.ui.boot();
   assert.equal(otherTab.ui.activeProfile.value.id, 'user1');
+});
+
+test('CSV export supports all, single and multiple categories with exact per-user payloads and filenames', async () => {
+  const clock = { now: new Date(2026, 9, 2, 11, 30, 45) }, h = harness(new Map(), clock), u = h.ui;
+  await u.boot();
+  const rows = [
+    { id: 'ai', category: 'AI', subcategory: '订阅', amountCents: 19900, date: '2025-03-01' },
+    { id: 'car', category: '交通', subcategory: '充电', amountCents: 3000, date: '2026-10-02' },
+    { id: 'food', category: '餐饮', subcategory: '午餐', amountCents: 1000, date: '2026-10-01' },
+  ].map((row) => C.normalizeRecord({ note: '合成,"备注"\n第二行', createdAt: 1000, updatedAt: 2000, ...row }));
+  u.state.value.expenses = rows;
+  u.filter.value = '娱乐'; u.filterSub.value = '不会匹配'; u.search.value = '不会匹配';
+  u.period.value = 'month'; u.periodKey.value = '2026-10';
+  const before = C.clone(u.state.value);
+  const exported = async () => C.parseCSV(await h.blobs.get(h.downloads.at(-1).href).text()).records;
+  u.beginCSVExport(); assert.equal(u.sheet.value, 'export'); u.exportCSV();
+  assert.equal(h.downloads.at(-1).download, 'user1_全部_20261002_113045.csv');
+  assert.deepEqual(await exported(), [rows[1], rows[2], rows[0]]);
+  u.exportMode.value = 'selected'; u.exportCategories.value = ['AI']; u.exportCSV();
+  assert.deepEqual(await exported(), [rows[0]]);
+  assert.equal(h.downloads.at(-1).download, 'user1_AI_20261002_113045.csv');
+  u.exportCategories.value = ['AI', '交通', 'AI']; u.exportCSV();
+  assert.deepEqual(await exported(), [rows[1], rows[0]]);
+  assert.equal(u.exportTotal.value, 22900);
+  assert.equal(h.downloads.at(-1).download, 'user1_交通+AI_20261002_113045.csv');
+  u.exportCategories.value = C.CATEGORIES.map((c) => c.name); u.exportCSV();
+  assert.equal(h.downloads.at(-1).download, 'user1_全部_20261002_113045.csv');
+  assert.deepEqual(u.state.value, before, 'exports must never mutate the ledger');
+  await choose(h, 'user2');
+  u.selectCategory('AI'); await save(u, '3', 'other user'); u.beginCSVExport(); u.exportCSV();
+  assert.equal(h.downloads.at(-1).download, 'user2_全部_20261002_113045.csv');
+  assert.equal((await exported()).length, 1); assert.equal((await exported())[0].note, 'other user');
+});
+
+test('CSV export blocks empty choices, stale or hidden panels and in-flight writes, but allows an empty category CSV', async () => {
+  const h = harness(), u = h.ui; await u.boot();
+  u.exportCSV(); assert.equal(h.downloads.length, 0);
+  u.beginCSVExport(); u.exportMode.value = 'selected'; u.exportCategories.value = []; u.exportCSV();
+  assert.equal(h.downloads.length, 0); assert.match(u.toast.value.message, /至少选择/);
+  u.exportCategories.value = ['未知']; u.exportCSV(); assert.equal(h.downloads.length, 0);
+  u.exportCategories.value = ['AI']; u.busy.value = true; u.exportCSV(); assert.equal(h.downloads.length, 0);
+  u.busy.value = false; u.exportCSV();
+  assert.equal(C.parseCSV(await h.blobs.get(h.downloads[0].href).text()).records.length, 0);
+  u.closeSheet(); u.exportCSV(); assert.equal(h.downloads.length, 1);
+  u.beginCSVExport(); u.exportMode.value = 'selected'; u.exportCategories.value = ['AI'];
+  await choose(h, 'user2');
+  assert.equal(u.exportCategories.value.length, 0); assert.equal(u.exportMode.value, 'all');
+  u.exportCSV(); assert.equal(h.downloads.length, 1);
+  u.beginCSVExport(); assert.equal(u.exportRows.value.length, 0);
+});
+
+test('JSON exports and sharing stay complete, filenames sanitize user names and use the click time across midnight', async () => {
+  const clock = { now: new Date(2026, 9, 2, 23, 59, 58) }, h = harness(new Map(), clock), u = h.ui;
+  await u.boot(); await save(u, '10', 'kept');
+  u.state.value.budgetCents = 50000; u.state.value.subcategories.AI.push('ChatGPT');
+  h.users[0].name = 'AI/私人:*账本'; await h.instances[0].onchange();
+  u.beginCSVExport(); u.exportMode.value = 'selected'; u.exportCategories.value = ['AI'];
+  assert.equal(u.exportName.value, 'AI_私人__账本_AI_20261002_235958.csv');
+  clock.now = new Date(2026, 9, 3, 0, 0, 1);
+  u.exportCSV(); assert.equal(h.downloads.at(-1).download, 'AI_私人__账本_AI_20261003_000001.csv');
+  u.exportBackup(); assert.equal(h.downloads.at(-1).download, 'AI_私人__账本_全部_20261003_000001.json');
+  const backup = C.readBackupEnvelope(await h.blobs.get(h.downloads.at(-1).href).text());
+  assert.deepEqual(backup.state, u.state.value); assert.equal(backup.profile.name, 'AI/私人:*账本');
+  let shared;
+  h.navigator.canShare = () => true; h.navigator.share = async (data) => { shared = data; };
+  await u.shareBackup();
+  assert.equal(shared.files[0].name, 'AI_私人__账本_全部_20261003_000001.json');
+  assert.deepEqual(C.readBackup(await shared.files[0].text()), u.state.value);
 });

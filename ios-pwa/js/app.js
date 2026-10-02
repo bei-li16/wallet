@@ -217,6 +217,9 @@
         importNewer.value = false;
         importTarget = previewStore = null;
         importSequence++;
+        exportTarget = null;
+        exportMode.value = "all";
+        exportCategories.value = [];
         if (importInput.value) importInput.value.value = "";
         sheet.value = "";
         setTab("home");
@@ -716,20 +719,46 @@
         a.remove();
         setTimeout(() => URL.revokeObjectURL(url), 60000);
       }
+      const exportMode = ref("all"), exportCategories = ref([]), exportTime = ref(new Date());
+      let exportTarget = null;
+      const selectedExportCategories = computed(() => categories
+        .map((c) => c.name).filter((name) => exportCategories.value.includes(name)));
+      const exportRows = computed(() => exportMode.value === "all" ? sorted.value :
+        sorted.value.filter((row) => selectedExportCategories.value.includes(row.category)));
+      const exportTotal = computed(() => C.sum(exportRows.value));
+      const exportCounts = computed(() => {
+        const counts = {};
+        for (const row of state.value.expenses) counts[row.category] = (counts[row.category] || 0) + 1;
+        return counts;
+      });
+      const exportCategoryLabel = computed(() => exportMode.value === "all" ||
+        selectedExportCategories.value.length === categories.length ? "全部" : selectedExportCategories.value.join("+"));
+      const exportName = computed(() => exportFileName(exportCategoryLabel.value, "csv", exportTime.value));
+      function beginCSVExport() {
+        if (busy.value || !ready.value) return;
+        exportTarget = store;
+        exportMode.value = "all";
+        exportCategories.value = [];
+        exportTime.value = new Date();
+        sheet.value = "export";
+      }
       function exportCSV() {
-        if (busy.value) return;
+        if (busy.value || !ready.value || exportTarget !== store || sheet.value !== "export") return;
+        if (exportMode.value !== "all" && !selectedExportCategories.value.length)
+          return notify("请至少选择一个大分类");
+        exportTime.value = new Date();
         download(
-          C.toCSV(sorted.value),
-          `Wallet-${fileUser()}-${now.value}.csv`,
+          C.toCSV(exportRows.value),
+          exportName.value,
           "text/csv;charset=utf-8",
         );
-        notify("CSV 已生成");
+        notify(`已生成 ${exportRows.value.length} 笔账目的 CSV，请保存到“文件”`);
       }
       function exportBackup() {
-        if (busy.value) return;
+        if (busy.value || !ready.value) return;
         download(
           C.makeBackup(state.value, activeProfile.value),
-          `Wallet-${fileUser()}-完整备份-${now.value}.json`,
+          exportFileName("全部", "json"),
           "application/json",
         );
         notify("完整备份已生成，请保存到“文件”");
@@ -737,16 +766,21 @@
       const canShare = typeof navigator.share === "function";
       function fileUser() {
         const p = activeProfile.value;
-        const name = p.name.replace(/[<>:"/\\|?*\u0000-\u001f]/g, "_");
-        return name === p.id ? name : `${name}-${p.id}`;
+        return p.name.replace(/[<>:"/\\|?*\u0000-\u001f\u007f]/g, "_").replace(/[. ]+$/, "") || p.id;
+      }
+      function exportFileName(category, extension, at = new Date()) {
+        const pad = (value) => String(value).padStart(2, "0");
+        const date = `${at.getFullYear()}${pad(at.getMonth() + 1)}${pad(at.getDate())}`;
+        const time = `${pad(at.getHours())}${pad(at.getMinutes())}${pad(at.getSeconds())}`;
+        return `${fileUser()}_${category}_${date}_${time}.${extension}`;
       }
       async function shareBackup() {
-        if (busy.value) return;
+        if (busy.value || !ready.value) return;
         const target = store;
         try {
           const file = new File(
             [C.makeBackup(state.value, activeProfile.value)],
-            `Wallet-${fileUser()}-${now.value}.json`,
+            exportFileName("全部", "json"),
             { type: "application/json" },
           );
           if (!navigator.canShare?.({ files: [file] })) return exportBackup();
@@ -886,6 +920,7 @@
         budget: "月预算",
         categories: "子分类",
         import: "导入预览",
+        export: "导出账目 CSV",
         install: "放到主屏幕",
       };
       function closeSheet() {
@@ -1089,6 +1124,15 @@
         beginImport,
         readImport,
         applyImport,
+        beginCSVExport,
+        exportMode,
+        exportCategories,
+        selectedExportCategories,
+        exportRows,
+        exportTotal,
+        exportCounts,
+        exportCategoryLabel,
+        exportName,
         exportCSV,
         exportBackup,
         canShare,
