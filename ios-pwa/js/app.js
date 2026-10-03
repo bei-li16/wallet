@@ -207,6 +207,7 @@
         reportCategory.value = "";
         chartType.value = "pie";
         trendType.value = "month";
+        trendKey.value = C.keyFor("month", now.value);
         annualYear.value = now.value.slice(0, 4);
         budgetInput.value = newSub.value = newProfileName.value = "";
         editingProfile.value = null;
@@ -509,9 +510,21 @@
         reportCategory = ref(""),
         chartType = ref("pie"),
         granularity = ref("month");
-      const periodOptions = computed(() =>
-        C.periods(state.value.expenses, period.value, now.value),
-      );
+      function periodOptionsFor(type, selectedKey) {
+        return [...new Set([...C.periods(state.value.expenses, type, now.value), selectedKey])].sort().reverse();
+      }
+      function periodNavigation(type, key) {
+        return {
+          previous: computed(() => C.adjacentPeriod(type(), key.value, -1)),
+          next: computed(() => C.adjacentPeriod(type(), key.value, 1)),
+          step(direction) {
+            const nextKey = C.adjacentPeriod(type(), key.value, direction);
+            if (nextKey) key.value = nextKey;
+          },
+        };
+      }
+      const periodOptions = computed(() => periodOptionsFor(period.value, periodKey.value));
+      const { previous: reportPrevious, next: reportNext, step: stepReport } = periodNavigation(() => period.value, periodKey);
       watch(period, (p) => {
         periodKey.value = C.keyFor(p, now.value);
         reportCategory.value = "";
@@ -555,16 +568,22 @@
           reportCategory.value = name;
       }
       const trendType = ref("month"),
+        trendKey = ref(C.keyFor("month", now.value)),
         trendRows = computed(() =>
-          C.trend(state.value.expenses, trendType.value, now.value),
+          C.trend(state.value.expenses, trendType.value, C.range(trendType.value, trendKey.value).start),
         );
       const trendTotal = computed(() =>
         trendRows.value.reduce((v, r) => v + r.value, 0),
       );
       const annualYear = ref(now.value.slice(0, 4));
-      const annualYears = computed(() =>
-        C.periods(state.value.expenses, "year", now.value),
-      );
+      const trendOptions = computed(() => periodOptionsFor(trendType.value, trendKey.value));
+      const { previous: trendPrevious, next: trendNext, step: stepTrend } = periodNavigation(() => trendType.value, trendKey);
+      watch(trendType, (type) => { trendKey.value = C.keyFor(type, now.value); });
+      watch(now, (current, previous) => {
+        if (trendKey.value === C.keyFor(trendType.value, previous)) trendKey.value = C.keyFor(trendType.value, current);
+      });
+      const annualYears = computed(() => periodOptionsFor("year", annualYear.value));
+      const { previous: annualPrevious, next: annualNext, step: stepAnnual } = periodNavigation(() => "year", annualYear);
       const annualRows = computed(() =>
         C.within(state.value.expenses, C.range("year", annualYear.value)),
       );
@@ -1093,6 +1112,9 @@
         period,
         periodKey,
         periodOptions,
+        reportPrevious,
+        reportNext,
+        stepReport,
         reportCategory,
         chartType,
         granularity,
@@ -1103,10 +1125,18 @@
         comparison,
         drill,
         trendType,
+        trendKey,
+        trendOptions,
+        trendPrevious,
+        trendNext,
+        stepTrend,
         trendRows,
         trendTotal,
         annualYear,
         annualYears,
+        annualPrevious,
+        annualNext,
+        stepAnnual,
         annualRows,
         annualGroups,
         budgetInput,

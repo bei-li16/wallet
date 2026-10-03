@@ -98,6 +98,18 @@
     const r = range(type, key);
     return range(type, keyFor(type, addDays(r.start, -1)));
   }
+  function adjacentPeriod(type, key, direction) {
+    if (!["week", "month", "year"].includes(type) || ![-1, 1].includes(direction)) return null;
+    if (typeof key !== "string" || !({ week: /^\d{4}-W\d{2}$/, month: /^\d{4}-\d{2}$/, year: /^\d{4}$/ })[type].test(key)) return null;
+    try {
+      const current = range(type, key);
+      if (keyFor(type, current.start) !== key || current.end < "1900-01-01" || current.start > "2199-12-31") return null;
+      const date = type === "week" ? addDays(current.start, direction * 7)
+        : shiftMonth(current.start, direction * (type === "year" ? 12 : 1));
+      const nextKey = keyFor(type, date), next = range(type, nextKey);
+      return next.end < "1900-01-01" || next.start > "2199-12-31" ? null : nextKey;
+    } catch { return null; }
+  }
   function periodLabel(type, key) {
     if (type === "year") return `${key}年`;
     if (type === "month")
@@ -521,6 +533,7 @@
     keyFor,
     range,
     previous,
+    adjacentPeriod,
     periodLabel,
     periods,
     cents,

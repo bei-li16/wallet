@@ -11,7 +11,7 @@ const tick = () => new Promise(setImmediate);
 const deferred = () => { let resolve; const promise = new Promise((r) => resolve = r); return { promise, resolve }; };
 function harness(session = new Map(), clock = null) {
   let ui, mounted;
-  const states = new Map(), recoveries = new Map(), instances = [], downloads = [], blobs = new Map();
+  const states = new Map(), recoveries = new Map(), instances = [], downloads = [], blobs = new Map(), watchers = [];
   class TestURL extends URL {
     static createObjectURL(blob) { const url = 'blob:wallet-test-' + blobs.size; blobs.set(url, blob); return url; }
     static revokeObjectURL(url) { blobs.delete(url); }
@@ -67,12 +67,12 @@ function harness(session = new Map(), clock = null) {
       createElement: () => { const a = { click: () => downloads.push(a), remove() {} }; return a; } },
     Vue: {
       ref: (value) => ({ value }), computed: (fn) => ({ get value() { return fn(); } }),
-      watch() {}, nextTick: (fn) => fn?.(), onMounted: (fn) => mounted = fn,
+      watch: (source, callback) => watchers.push({ source, callback }), nextTick: (fn) => fn?.(), onMounted: (fn) => mounted = fn,
       createApp: (options) => { ui = options.setup(); return { component() {}, mount() {} }; },
     },
   };
   vm.runInNewContext(source, context);
-  return { ui, states, recoveries, instances, users, downloads, blobs, navigator, session, Store, mounted: () => mounted() };
+  return { ui, states, recoveries, instances, users, downloads, blobs, navigator, session, Store, watchers, mounted: () => mounted() };
 }
 async function save(ui, amount, note) {
   ui.form.value.amount = amount; ui.form.value.note = note;
@@ -341,4 +341,63 @@ test('JSON exports and sharing stay complete, filenames sanitize user names and 
   await u.shareBackup();
   assert.equal(shared.files[0].name, 'AI_私人__账本_全部_20261003_000001.json');
   assert.deepEqual(C.readBackup(await shared.files[0].text()), u.state.value);
+});
+
+test('report arrows include empty periods, refresh totals and comparisons, and preserve category/type', async () => {
+  const h=harness(), u=h.ui; await u.boot(); u.now.value='2026-10-03';
+  u.state.value.expenses=[
+    C.normalizeRecord({id:'sep',date:'2026-09-15',amountCents:1000,category:'交通',subcategory:'停车'}),
+    C.normalizeRecord({id:'oct',date:'2026-10-01',amountCents:1500,category:'交通',subcategory:'停车'}),
+    C.normalizeRecord({id:'other',date:'2026-10-01',amountCents:500,category:'AI',subcategory:'订阅'}),
+  ];
+  u.period.value='month'; u.periodKey.value='2026-10'; u.reportCategory.value='交通'; u.chartType.value='bar';
+  const ledger=C.clone(u.state.value);
+  assert.equal(u.reportTotal.value,1500); assert.match(u.comparison.value,/增加 50\.0%/);
+  u.stepReport(-1); assert.equal(u.periodKey.value,'2026-09'); assert.equal(u.reportTotal.value,1000);
+  assert.equal(u.reportCategory.value,'交通'); assert.equal(u.chartType.value,'bar');
+  u.stepReport(-1); assert.equal(u.periodKey.value,'2026-08'); assert.equal(u.reportRows.value.length,0);
+  assert.ok(u.periodOptions.value.includes('2026-08'));
+  u.stepReport(1); u.stepReport(1); assert.equal(u.reportTotal.value,1500);
+  u.stepReport(1); assert.equal(u.periodKey.value,'2026-11'); assert.ok(u.periodOptions.value.includes('2026-11'));
+  assert.equal(u.reportTotal.value,0); assert.match(u.comparison.value,/减少 100\.0%/);
+  u.period.value='week'; u.periodKey.value='2020-W53'; u.stepReport(1); assert.equal(u.periodKey.value,'2021-W01');
+  u.period.value='year'; u.periodKey.value='2026'; u.stepReport(-1); assert.equal(u.periodKey.value,'2025');
+  u.period.value='all'; const key=u.periodKey.value; u.stepReport(1);
+  assert.equal(u.periodKey.value,key); assert.equal(u.reportPrevious.value,null); assert.equal(u.reportNext.value,null);
+  assert.deepEqual(u.state.value,ledger);
+});
+
+test('trend window and annual navigation are independent, handle limits and reset per user', async () => {
+  const h=harness(), u=h.ui; await u.boot(); u.now.value='2026-10-03';
+  u.state.value.expenses=[
+    C.normalizeRecord({id:'past',date:'2025-10-01',amountCents:1000,category:'交通',subcategory:'停车'}),
+    C.normalizeRecord({id:'today',date:'2026-10-01',amountCents:2000,category:'AI',subcategory:'订阅'}),
+  ];
+  u.periodKey.value='2026-10'; u.trendType.value='month'; u.trendKey.value='2026-10'; u.annualYear.value='2026';
+  assert.equal(u.trendTotal.value,2000); u.stepTrend(-1);
+  assert.equal(u.trendKey.value,'2026-09'); assert.equal(u.trendRows.value.length,12);
+  assert.equal(u.trendRows.value[0].start,'2025-10-01'); assert.equal(u.trendRows.value[11].start,'2026-09-01');
+  assert.equal(u.trendTotal.value,1000); assert.equal(u.periodKey.value,'2026-10'); assert.equal(u.annualYear.value,'2026');
+  u.stepAnnual(-1); assert.equal(u.annualYear.value,'2025'); assert.equal(C.sum(u.annualRows.value),1000);
+  u.stepAnnual(-1); assert.ok(u.annualYears.value.includes('2024')); assert.equal(u.annualRows.value.length,0);
+  u.annualYear.value='1900'; assert.equal(u.annualPrevious.value,null); u.stepAnnual(-1); assert.equal(u.annualYear.value,'1900');
+  u.annualYear.value='2199'; assert.equal(u.annualNext.value,null); u.stepAnnual(1); assert.equal(u.annualYear.value,'2199');
+  u.trendType.value='week'; u.trendKey.value='2020-W53'; u.stepTrend(1);
+  assert.equal(u.trendKey.value,'2021-W01'); assert.equal(u.trendRows.value.length,8);
+  u.trendType.value='year'; u.trendKey.value='2026'; u.stepTrend(-1);
+  assert.equal(u.trendKey.value,'2025'); assert.equal(u.trendRows.value.length,5);
+  await choose(h,'user2'); assert.equal(u.trendType.value,'month'); assert.equal(u.trendKey.value,'2026-10');
+  assert.equal(u.periodKey.value,'2026-10'); assert.equal(u.annualYear.value,'2026'); assert.equal(u.trendTotal.value,0);
+  assert.ok(!u.trendOptions.value.includes('2025-10')); assert.ok(!u.annualYears.value.includes('2025'));
+});
+
+test('period type watchers reset anchors and current trend follows rollover without moving historical views', async () => {
+  const h=harness(), u=h.ui; await u.boot(); u.now.value='2026-10-03';
+  const changed=(ref,...args)=>h.watchers.find(w=>w.source===ref).callback(...args);
+  u.period.value='week'; changed(u.period,'week');
+  assert.equal(u.periodKey.value,C.keyFor('week',u.now.value));
+  u.trendType.value='year'; changed(u.trendType,'year'); assert.equal(u.trendKey.value,'2026');
+  u.trendType.value='month'; changed(u.trendType,'month'); assert.equal(u.trendKey.value,'2026-10');
+  u.now.value='2026-11-01'; changed(u.now,'2026-11-01','2026-10-31'); assert.equal(u.trendKey.value,'2026-11');
+  u.stepTrend(-1); changed(u.now,'2026-12-01','2026-11-30'); assert.equal(u.trendKey.value,'2026-10');
 });

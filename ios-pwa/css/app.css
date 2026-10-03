@@ -1102,11 +1102,25 @@ strong {
 }
 .report-toolbar {
   display: flex;
+  flex-wrap: wrap;
   justify-content: space-between;
   align-items: center;
   gap: 8px;
   margin-bottom: 16px;
 }
+.period-navigation { display: flex; align-items: center; gap: 4px; min-width: 0; }
+.report-toolbar > .period-navigation { flex: 1 1 220px; }
+.report-toolbar > .chart-switch { flex-shrink: 0; margin-left: auto; }
+.period-navigation .select-wrap { flex: 0 1 auto; }
+.period-navigation .select-wrap select { flex: 1; min-width: 0; text-overflow: ellipsis; }
+.period-navigation .select-wrap svg, .period-navigation .select-wrap > span { flex-shrink: 0; }
+.period-controls { display: flex; flex-shrink: 0; gap: 2px; }
+.period-controls button { display: grid; place-items: center; width: 32px; height: 44px; border-radius: 10px; color: var(--accent); background: var(--accent-soft); }
+.period-controls svg { width: 17px; height: 17px; }
+.period-controls button:disabled { opacity: 0.3; }
+.trend-navigation { margin-bottom: 16px; }
+.annual-heading { flex-wrap: wrap; gap: 8px; }
+.annual-heading > .period-navigation { margin-left: auto; }
 .select-wrap {
   display: inline-flex;
   align-items: center;

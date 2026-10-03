@@ -200,3 +200,39 @@ test('AI defaults never overwrite explicit custom or empty lists or conceal inva
   delete state.subcategories.餐饮;
   assert.throws(() => C.validateState(state), 'other missing categories still indicate invalid data');
 });
+
+test('adjacent periods are consecutive calendar periods including ISO week 53 and leap February', () => {
+  assert.equal(C.adjacentPeriod('month','2026-01',-1),'2025-12');
+  assert.equal(C.adjacentPeriod('month','2026-12',1),'2027-01');
+  assert.equal(C.adjacentPeriod('year','2026',-1),'2025');
+  assert.equal(C.adjacentPeriod('year','2026',1),'2027');
+  assert.equal(C.adjacentPeriod('week','2020-W53',1),'2021-W01');
+  assert.equal(C.adjacentPeriod('week','2021-W01',-1),'2020-W53');
+  assert.equal(C.adjacentPeriod('week','2021-W52',1),'2022-W01');
+  assert.equal(C.adjacentPeriod('month','2024-03',-1),'2024-02');
+  for (const date of ['1900-01-01','2020-12-31','2024-02-29','2026-10-03','2199-12-31']) {
+    for (const type of ['week','month','year']) {
+      const key=C.keyFor(type,date);
+      for (const delta of [-1,1]) {
+        const neighbor=C.adjacentPeriod(type,key,delta);
+        if (neighbor) {
+          assert.equal(C.adjacentPeriod(type,neighbor,-delta),key);
+          const current=C.range(type,key), next=C.range(type,neighbor);
+          assert.equal(delta===1 ? C.addDays(current.end,1) : C.addDays(next.end,1), delta===1 ? next.start : current.start);
+        }
+      }
+    }
+  }
+});
+
+test('period navigation respects supported dates, rejects invalid keys and leaves all-time unchanged', () => {
+  for (const type of ['month','year','week']) {
+    assert.equal(C.adjacentPeriod(type,C.keyFor(type,'1900-01-01'),-1),null);
+    assert.equal(C.adjacentPeriod(type,C.keyFor(type,'2199-12-31'),1),null);
+  }
+  for (const [type,key] of [['month','2026-13'],['month','2026-00'],['month','invalid'],['year','1899'],['year','2200'],['week','2021-W53'],['week','2026-W00'],['week','2026-W54'],['all','2026-10'],['day','2026-10-03'],['month',null]]) {
+    assert.equal(C.adjacentPeriod(type,key,1),null);
+  }
+  for (const delta of [0,2,-2,'1',NaN]) assert.equal(C.adjacentPeriod('month','2026-10',delta),null);
+  assert.equal(C.adjacentPeriod('week',C.keyFor('week','2199-12-31'),-1),'2199-W52');
+});
