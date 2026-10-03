@@ -468,7 +468,7 @@
                   </button>
                 </div>
                 <p
-                  v-if="reportRows.length && !reportCategory"
+                  v-if="reportRows.length && !reportCategory && chartType === 'pie'"
                   class="small-note centered"
                 >
                   轻点分类，查看具体去向
@@ -773,7 +773,7 @@
                     (cacheReady
                       ? "离线资源已就绪 · 无网络也可以使用"
                       : "正在准备离线资源…")
-                  }}<br />Wallet 1.4.0 · 数据仅保存在当前设备
+                  }}<br />Wallet 1.5.0 · 数据仅保存在当前设备
                 </p>
               </template>
               <template v-if="sheet === 'export'">

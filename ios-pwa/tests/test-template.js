@@ -10,5 +10,11 @@ const context = { console, document: { createElement: () => { let html; return {
 vm.createContext(context);
 vm.runInContext(fs.readFileSync(path.join(root, 'js/vendor/vue.global.prod.js'), 'utf8'), context);
 const html = fs.readFileSync(path.join(root, 'index.html'), 'utf8');
-try { context.Vue.compile(html.slice(html.indexOf('<div id="app"'), html.lastIndexOf('</body>'))); console.log('PASS inline Vue template compiles'); }
+try {
+  context.Vue.compile(html.slice(html.indexOf('<div id="app"'), html.lastIndexOf('</body>')));
+  context.window = {}; context.WalletCore = {};
+  vm.runInContext(fs.readFileSync(path.join(root, 'js/charts.js'), 'utf8'), context);
+  context.Vue.compile(context.window.WalletChart.template);
+  console.log('PASS app and chart Vue templates compile');
+}
 catch (e) { console.error('FAIL Vue template: ' + e.message); process.exitCode = 1; }
