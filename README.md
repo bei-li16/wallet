@@ -91,6 +91,12 @@ wallet/
 └── README.md               # 本文件
 ```
 
+## 发布产物管理
+
+Git 跟踪源代码、文档、配置和应用所需的静态资源。安装包、EXE、ZIP、发布校验文件以及 `release/`、`ios-pwa/release/` 中的本地发布/部署产物由 `.gitignore` 排除，发布附件只上传 [GitHub Releases](https://github.com/bei-li16/wallet/releases)。
+
+本地清理分别保留 Windows 桌面版和 iOS PWA 的最新版本；PWA 当前部署目录、Windows HTTPS 证书与服务配置保留。GitHub 历史 Release 和源码标签继续保留。`desktop/frontend/dist/` 是直接嵌入桌面程序的前端源码，`desktop/build/` 中的图标及 Windows 清单是构建输入，仍需跟踪。
+
 ## License
 
 MIT

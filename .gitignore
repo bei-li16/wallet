@@ -11,5 +11,19 @@ desktop/costrecord/
 # desktop app build artifacts
 desktop/build/bin/
 desktop/frontend/wailsjs/
-# 发布物走 GitHub Releases（exe 不入库，仅保留校验和）
-release/*/Wallet.exe
+# 发布产物只上传 GitHub Releases；本地包、校验文件和解压目录不进入 Git
+/release/
+/ios-pwa/release/
+*.[eE][xX][eE]
+*.dll
+*.pdb
+*.msi
+*.msix
+*.msixbundle
+*.[zZ][iI][pP]
+*.7z
+*.rar
+*.ipa
+*.dmg
+*.sha256
+SHA256SUMS.txt

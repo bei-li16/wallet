@@ -64,7 +64,7 @@ node tests/test-domain.js   # 领域层测试（需 Node）
 
 发布：各版本安装包（`Wallet.exe` + `SHA256SUMS.txt`）发布在
 [GitHub Releases](https://github.com/bei-li16/wallet/releases)，tag 为 `v1.0.x`；
-仓库不再跟踪 exe（`release/*/Wallet.exe` 已 gitignore，仅保留校验和）。
+发布目录 `release/`、安装包、EXE 和校验文件均不进入 Git；全部发布附件只上传 GitHub Releases。本地仅保留桌面版最新发布包，构建产生的重复 EXE 可在校验一致后清理。
 
 ## 数据与迁移
 
