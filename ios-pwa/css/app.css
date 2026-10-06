@@ -1109,8 +1109,12 @@ strong {
   margin-bottom: 16px;
 }
 .period-navigation { display: flex; align-items: center; gap: 4px; min-width: 0; }
-.report-toolbar > .period-navigation { flex: 1 1 220px; }
-.report-toolbar > .chart-switch { flex-shrink: 0; margin-left: auto; }
+.report-toolbar > .period-navigation { flex: 1 1 100%; }
+.report-display-controls { display: flex; align-items: center; justify-content: space-between; gap: 12px; width: 100%; min-width: 0; }
+.report-display-controls > .chart-switch { flex-shrink: 0; }
+.report-category-select { flex: 1; }
+.report-category-select select { flex: 1; min-width: 0; max-width: none; text-overflow: ellipsis; }
+.report-category-select svg { flex-shrink: 0; }
 .period-navigation .select-wrap { flex: 0 1 auto; }
 .period-navigation .select-wrap select { flex: 1; min-width: 0; text-overflow: ellipsis; }
 .period-navigation .select-wrap svg, .period-navigation .select-wrap > span { flex-shrink: 0; }

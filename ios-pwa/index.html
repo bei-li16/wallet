@@ -399,11 +399,21 @@
                   <button type="button" @click="stepReport(1)" :disabled="!reportNext" aria-label="查看报表下一周期" title="下一周期"><w-icon name="arrow"></w-icon></button>
                 </div>
                 </div><span v-else class="small-note">全部记账时间</span>
-                <div class="chart-switch" aria-label="图表类型">
+                <div class="report-display-controls">
+                <label class="select-wrap report-category-select">
+                  <w-icon name="grid"></w-icon>
+                  <select v-model="reportCategory" aria-label="选择报表大分类" :title="reportCategory || '全部分类'">
+                    <option value="">全部分类</option>
+                    <option v-for="category in categories" :key="category.name" :value="category.name">{{ category.name }}</option>
+                  </select>
+                  <w-icon name="down"></w-icon>
+                </label>
+                <div class="chart-switch" role="group" aria-label="图表类型">
                   <button
                     :class="{ active: chartType === 'pie' }"
                     :aria-pressed="chartType === 'pie'"
                     aria-label="饼图"
+                    title="饼图"
                     @click="chartType = 'pie'"
                   >
                     <w-icon name="pie"></w-icon></button
@@ -411,10 +421,21 @@
                     :class="{ active: chartType === 'bar' }"
                     :aria-pressed="chartType === 'bar'"
                     aria-label="柱状图"
+                    title="柱状图"
                     @click="chartType = 'bar'"
                   >
                     <w-icon name="bars"></w-icon>
                   </button>
+                  <button
+                    :class="{ active: chartType === 'line' }"
+                    :aria-pressed="chartType === 'line'"
+                    aria-label="曲线图"
+                    title="曲线图"
+                    @click="chartType = 'line'"
+                  >
+                    <w-icon name="trend"></w-icon>
+                  </button>
+                </div>
                 </div>
               </div>
               <article class="card report-card">
@@ -435,7 +456,7 @@
                 </p>
                 <p class="comparison">{{ comparison }}</p>
                 <div v-if="!reportRows.length" class="chart-empty">
-                  <w-icon name="pie"></w-icon>
+                  <w-icon :name="chartType === 'line' ? 'trend' : chartType === 'bar' ? 'bars' : 'pie'"></w-icon>
                   <p>这个时间段还没有支出</p>
                   <span>记下第一笔，就能看到分类统计</span>
                 </div>
@@ -449,7 +470,7 @@
                     :groups="reportGroups"
                     :rows="reportBuckets"
                     :visible="tab === 'report'"
-                    :label="`${reportCategory || '全部分类'}支出${C.money(reportTotal)}元，下方有分类明细`"
+                    :label="`${reportCategory || '全部分类'}${chartType === 'line' ? '支出曲线' : '支出统计'}，总额${C.money(reportTotal)}元，下方有分类明细`"
                     @select="drill"
                   ></wallet-chart>
                   <div v-if="chartType === 'pie'" class="donut-center">
@@ -459,20 +480,25 @@
                 </div>
                 <div
                   class="chips centered-chips"
-                  v-if="period === 'all' && chartType === 'bar'"
+                  v-if="period === 'all' && chartType !== 'pie'"
                 >
                   <button
                     :class="{ active: granularity === 'month' }"
+                    :aria-pressed="granularity === 'month'"
                     @click="granularity = 'month'"
                   >
                     按月</button
                   ><button
                     :class="{ active: granularity === 'year' }"
+                    :aria-pressed="granularity === 'year'"
                     @click="granularity = 'year'"
                   >
                     按年
                   </button>
                 </div>
+                <p v-if="reportRows.length && chartType === 'line'" class="small-note centered">
+                  {{ reportCategory || "全部分类" }}支出走势 · {{ period === "all" ? (granularity === "year" ? "按年汇总" : "按月汇总") : period === "year" ? "按月汇总" : "按日汇总" }}
+                </p>
                 <p
                   v-if="reportRows.length && !reportCategory && chartType === 'pie'"
                   class="small-note centered"

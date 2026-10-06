@@ -84,9 +84,44 @@ test('trend selects the nearest period and distinguishes week/month/year titles'
     {label:'2026',start:'2026-01-01',end:'2026-12-31',value:78900}];
   const chart=renderChart(300,'line',3,{rows}); chart.ui.choose(0);
   assert.equal(chart.ui.detail.value.title,'2026/06/01–06/07'); assert.equal(chart.ui.detail.value.total,12345);
+  assert.equal(chart.ui.detail.value.items.length,0, 'trend without category buckets keeps its compact total-only detail');
   assert.ok(chart.option.graphic.some(g=>g.type==='circle'&&g.shape.r===6));
   chart.ui.choose(1); assert.equal(chart.ui.detail.value.title,'2026年6月');
   chart.ui.choose(2); assert.equal(chart.ui.detail.value.title,'2026年');
+});
+
+test('report curves show main/subcategory amounts under the selected period, including zero periods',()=>{
+  const records=[
+    C.normalizeRecord({id:'ai',date:'2026-01-02',amountCents:19901,category:'AI',subcategory:'订阅'}),
+    C.normalizeRecord({id:'parking',date:'2026-01-03',amountCents:725,category:'交通',subcategory:'停车'}),
+    C.normalizeRecord({id:'api',date:'2026-03-01',amountCents:308,category:'AI',subcategory:'API 用量'}),
+  ];
+  const chart=renderChart(300,'line',3,{rows:C.buckets(records,'all',''),groups:C.breakdown(records)});
+  assert.deepEqual(Array.from(chart.option.series[0].data),[206.26,0,3.08]);
+  chart.ui.choose(0);
+  assert.equal(chart.ui.detail.value.total,20626);
+  assert.deepEqual(Array.from(chart.ui.detail.value.items,i=>[i.name,i.value]),[['AI',19901],['交通',725]]);
+  chart.ui.choose(1); assert.equal(chart.ui.detail.value.title,'2026年2月');
+  assert.equal(chart.ui.detail.value.total,0); assert.ok(chart.ui.detail.value.items.every(i=>i.value===0));
+  chart.props.rows=C.buckets(records.filter(r=>r.category==='AI'),'all','','month','AI');
+  chart.props.groups=C.breakdown(records,'AI'); chart.watchers[0]();
+  assert.equal(chart.ui.detail.value,null); chart.ui.choose(2);
+  assert.equal(chart.ui.detail.value.total,308);
+  assert.deepEqual(Array.from(chart.ui.detail.value.items,i=>[i.name,i.value]),[['订阅',0],['API 用量',308]]);
+  assert.equal(chart.option.tooltip.show,false); assert.equal(chart.emitted.length,0);
+});
+
+test('a single month/year curve and a zoomed single period retain a visible data point',()=>{
+  const record=C.normalizeRecord({id:'one',date:'2026-10-02',amountCents:19900,category:'AI',subcategory:'订阅'});
+  for(const granularity of ['month','year']){
+    const chart=renderChart(300,'line',1,{rows:C.buckets([record],'all','',granularity),groups:C.breakdown([record])});
+    assert.equal(chart.option.series[0].showSymbol,true); assert.equal(chart.option.dataZoom.length,0);
+    chart.ui.choose(0); assert.equal(chart.ui.detail.value.total,19900);
+  }
+  const chart=renderChart(300,'line',27); assert.equal(chart.option.series[0].showSymbol,false);
+  chart.zoom(50,50); assert.equal(chart.option.series[0].showSymbol,true);
+  chart.ui.choose(13); assert.equal(chart.ui.detail.value.total,100);
+  chart.zoom(0,100); assert.equal(chart.option.series[0].showSymbol,false);
 });
 
 test('pie charts retain category drill and escaped compact single-item tooltips',()=>{
@@ -139,9 +174,18 @@ test('vendored ECharts renders selection and preserves zoom using its real SVG r
     assert.equal(chart.getOption().dataZoom[0].end,20);
     props.kind='line'; watchers[0](); ui.choose(27);
     assert.equal(chart.getOption().series[0].type,'line');
-    assert.equal(ui.detail.value.total,54321); assert.equal(ui.detail.value.items.length,0);
+    assert.equal(ui.detail.value.total,54321); assert.equal(ui.detail.value.items.length,1);
+    assert.equal(ui.detail.value.items[0].name,'交通'); assert.equal(ui.detail.value.items[0].value,54321);
     assert.ok(chart.getOption().graphic[0].elements.some(g=>g.type==='circle'&&g.shape.r===6));
     const lineSvg=chart.renderToSVGString(); assert.ok(!lineSvg.includes('NaN')); assert.ok(!lineSvg.includes('undefined'));
+    chart.dispatchAction({type:'dataZoom',startValue:27,endValue:27});
+    assert.equal(chart.getOption().series[0].showSymbol,true);
+    props.rows=rows.slice(-1); watchers[0]();
+    assert.equal(chart.getOption().series[0].showSymbol,true); assert.equal(chart.getOption().series[0].data.length,1);
+    assert.ok(!chart.renderToSVGString().includes('NaN')); ui.choose(0);
+    const point=chart.getOption().graphic[0].elements.find(g=>g.type==='circle'&&g.shape.r===6);
+    assert.ok(Math.abs(point.shape.cx-chart.convertToPixel({xAxisIndex:0},0))<0.01);
+    assert.equal(ui.detail.value.total,54321);
     props.kind='pie'; watchers[0]();
     assert.equal(chart.getOption().series[0].type,'pie'); assert.equal(ui.detail.value,null);
     assert.equal(ui.zoomed.value,false); assert.equal((chart.getOption().graphic || []).length,0);

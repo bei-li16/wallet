@@ -369,6 +369,7 @@ test('report arrows include empty periods, refresh totals and comparisons, and p
 
 test('trend window and annual navigation are independent, handle limits and reset per user', async () => {
   const h=harness(), u=h.ui; await u.boot(); u.now.value='2026-10-03';
+  u.form.value.date=u.now.value; // Keep the blank form aligned with the fixture date so switching needs no draft confirmation.
   u.state.value.expenses=[
     C.normalizeRecord({id:'past',date:'2025-10-01',amountCents:1000,category:'交通',subcategory:'停车'}),
     C.normalizeRecord({id:'today',date:'2026-10-01',amountCents:2000,category:'AI',subcategory:'订阅'}),
@@ -400,4 +401,105 @@ test('period type watchers reset anchors and current trend follows rollover with
   u.trendType.value='month'; changed(u.trendType,'month'); assert.equal(u.trendKey.value,'2026-10');
   u.now.value='2026-11-01'; changed(u.now,'2026-11-01','2026-10-31'); assert.equal(u.trendKey.value,'2026-11');
   u.stepTrend(-1); changed(u.now,'2026-12-01','2026-11-30'); assert.equal(u.trendKey.value,'2026-10');
+});
+
+test('pie/bar/curve report totals match for all periods and every main category, without changing the ledger', async () => {
+  const h=harness(), u=h.ui; await u.boot(); u.now.value='2026-10-06';
+  u.state.value.expenses=[
+    C.normalizeRecord({id:'past',date:'2025-10-01',amountCents:725,category:'交通',subcategory:'停车'}),
+    ...C.CATEGORIES.map((c,i)=>C.normalizeRecord({id:'category-'+i,date:'2026-10-05',amountCents:10001+i,category:c.name,subcategory:c.name==='AI'?'订阅':'测试子类'})),
+    C.normalizeRecord({id:'ai-api',date:'2026-10-06',amountCents:308,category:'AI',subcategory:'API 用量'}),
+  ];
+  const ledger=C.clone(u.state.value);
+  for(const period of ['week','month','year','all']){
+    u.period.value=period; u.periodKey.value=C.keyFor(period==='all'?'month':period,u.now.value);
+    for(const granularity of period==='all'?['month','year']:['month']){
+      u.granularity.value=granularity;
+      for(const category of ['',...C.CATEGORIES.map(c=>c.name)]){
+        u.reportCategory.value=category;
+        const expected=C.sum(ledger.expenses.filter(e=>(period==='all'||e.date>=C.range(period,u.periodKey.value).start&&e.date<=C.range(period,u.periodKey.value).end)&&(!category||e.category===category)));
+        for(const kind of ['pie','bar','line']){
+          u.chartType.value=kind;
+          assert.equal(u.reportTotal.value,expected,`${period}/${granularity}/${category||'all'}/${kind}`);
+          assert.equal(u.reportGroups.value.reduce((sum,g)=>sum+g.value,0),expected);
+          assert.equal(u.reportBuckets.value.reduce((sum,r)=>sum+r.value,0),expected);
+          for(const row of u.reportBuckets.value) assert.equal(Object.values(row.parts).reduce((a,b)=>a+b,0),row.value);
+        }
+      }
+    }
+  }
+  assert.deepEqual(u.state.value,ledger);
+});
+
+test('curve category selection, all-time grouping, arrows and user reset stay consistent', async () => {
+  const h=harness(), u=h.ui; await u.boot(); u.now.value='2026-10-06';
+  u.form.value.date=u.now.value;
+  u.state.value.expenses=[
+    C.normalizeRecord({id:'old-ai',date:'2025-10-01',amountCents:1000,category:'AI',subcategory:'订阅'}),
+    C.normalizeRecord({id:'new-ai',date:'2026-10-05',amountCents:2000,category:'AI',subcategory:'订阅'}),
+    C.normalizeRecord({id:'car',date:'2026-10-05',amountCents:725,category:'交通',subcategory:'停车'}),
+  ];
+  const ledger=C.clone(u.state.value);
+  u.period.value='all'; u.chartType.value='line'; u.reportCategory.value='AI'; u.granularity.value='month';
+  h.states.set('user1',C.clone(ledger));
+  assert.equal(u.reportBuckets.value.length,13); assert.equal(u.reportBuckets.value[1].value,0);
+  u.granularity.value='year'; assert.equal(u.reportBuckets.value.length,2);
+  assert.deepEqual(Array.from(u.reportBuckets.value,r=>r.value),[1000,2000]);
+  u.reportCategory.value=''; assert.equal(u.reportTotal.value,3725);
+  u.drill('交通'); assert.equal(u.reportCategory.value,'交通'); assert.equal(u.reportTotal.value,725);
+  assert.equal(u.chartType.value,'line'); assert.equal(u.granularity.value,'year');
+  u.period.value='month'; u.periodKey.value='2026-10'; u.reportCategory.value='AI';
+  u.stepReport(-1); assert.equal(u.reportRows.value.length,0); assert.equal(u.reportTotal.value,0);
+  assert.equal(u.chartType.value,'line'); assert.equal(u.reportCategory.value,'AI');
+  u.stepReport(1); assert.equal(u.reportTotal.value,2000); assert.match(u.comparison.value,/上期无支出/);
+  u.reportCategory.value='医疗'; assert.equal(u.reportRows.value.length,0);
+  assert.deepEqual(u.state.value,ledger);
+  await choose(h,'user2'); assert.equal(u.reportCategory.value,''); assert.equal(u.chartType.value,'pie');
+  u.chartType.value='line'; u.period.value='all'; assert.equal(u.reportTotal.value,0);
+  assert.equal(u.reportGroups.value.length,0); assert.ok(u.reportBuckets.value.every(r=>r.value===0));
+  await choose(h,'user1'); assert.deepEqual(u.state.value,ledger);
+});
+
+test('actual Vue report controls select curves/categories and expose both all-time granularities', async () => {
+  const h=harness(), u=h.ui; await u.boot(); u.tab.value='report'; u.period.value='all';
+  u.state.value.expenses=[
+    C.normalizeRecord({id:'ai',date:'2026-10-05',amountCents:19900,category:'AI',subcategory:'订阅'}),
+    C.normalizeRecord({id:'car',date:'2025-10-05',amountCents:725,category:'交通',subcategory:'停车'}),
+  ];
+  const decode=text=>text.replace(/&quot;/g,'"').replace(/&#39;|&apos;/g,"'").replace(/&lt;/g,'<').replace(/&gt;/g,'>').replace(/&amp;/g,'&');
+  const context={console,document:{createElement:()=>{let html;return {
+    set innerHTML(value){html=value;},get textContent(){return decode(html);},
+    get children(){return [{getAttribute:()=>decode(html.slice(10,-2))}];},
+  };}}};
+  context.Function=function(...args){return vm.runInContext('(function('+args.slice(0,-1).join(',')+') {'+args.at(-1)+'\n})',context);};
+  vm.createContext(context);
+  vm.runInContext(fs.readFileSync(path.join(__dirname,'../js/vendor/vue.global.prod.js'),'utf8'),context);
+  const html=fs.readFileSync(path.join(__dirname,'../index.html'),'utf8');
+  const start=html.lastIndexOf('<section',html.indexOf('aria-labelledby="report-title"'));
+  const render=context.Vue.compile(html.slice(start,html.indexOf('</section>',start)+10));
+  const state=new Proxy(u,{
+    get(target,key){const value=target[key];return value&&typeof value==='object'&&'value' in value?value.value:value;},
+    set(target,key,value){if(target[key]&&typeof target[key]==='object'&&'value' in target[key])target[key].value=value;else target[key]=value;return true;},
+  });
+  const flatten=(node)=>[node,...(Array.isArray(node.children)?node.children.flatMap(child=>child&&typeof child==='object'?flatten(child):[]):[])];
+  const nodes=()=>flatten(render(state,[]));
+  const control=(label)=>nodes().find(n=>n.props?.['aria-label']===label);
+  control('曲线图').props.onClick(); assert.equal(u.chartType.value,'line');
+  assert.equal(control('曲线图').props['aria-pressed'],true);
+  const selector=control('选择报表大分类');
+  const options=flatten(selector).filter(n=>n.type==='option');
+  assert.deepEqual(Array.from(options,n=>n.props.value),['',...C.CATEGORIES.map(c=>c.name)]);
+  selector.props['onUpdate:modelValue']('AI'); assert.equal(u.reportTotal.value,19900);
+  const chart=()=>nodes().find(n=>n.type==='wallet-chart');
+  assert.equal(chart().props.kind,'line'); assert.equal(chart().props.groups[0].name,'订阅');
+  assert.equal(chart().props.rows.length,1); assert.match(chart().props.label,/AI支出曲线/);
+  const chips=nodes().find(n=>n.props?.class==='chips centered-chips');
+  const buttons=flatten(chips).filter(n=>n.type==='button');
+  assert.equal(buttons.length,2); buttons[1].props.onClick(); assert.equal(u.granularity.value,'year');
+  control('选择报表大分类').props['onUpdate:modelValue']('');
+  assert.equal(chart().props.rows.length,2); assert.equal(u.reportTotal.value,20625);
+  for(const label of ['饼图','柱状图','曲线图']){
+    control(label).props.onClick(); assert.equal(control(label).props['aria-pressed'],true);
+    assert.equal(nodes().some(n=>n.props?.class==='chips centered-chips'),label!=='饼图');
+  }
 });

@@ -20,7 +20,7 @@
         <div v-if="detail" class="chart-detail-dock" :style="dockStyle">
           <section class="chart-detail" ref="panel" aria-label="选中时间的支出明细" aria-live="polite" :style="panelStyle">
             <header class="chart-detail-header"><strong>{{ detail.title }}</strong><b>¥{{ money(detail.total) }}</b></header>
-            <div v-if="kind === 'bar'" class="chart-detail-rows" ref="detailRows" role="region" aria-label="图表分类明细" tabindex="0">
+            <div v-if="detail.items.length" class="chart-detail-rows" ref="detailRows" role="region" aria-label="图表分类明细" tabindex="0">
               <template v-for="item in detail.items" :key="item.name">
                 <i :style="{ background: item.color }" aria-hidden="true"></i><span>{{ item.name }}</span><strong>¥{{ money(item.value) }}</strong>
               </template>
@@ -57,7 +57,8 @@
       }
       function seriesData() {
         const rows = props.rows || [];
-        if (props.kind === "line") return [{ data: rows.map((r) => r.value / 100) }];
+        if (props.kind === "line") return [{ data: rows.map((r) => r.value / 100),
+          showSymbol: rows.length === 1 || firstVisible.value === lastVisible.value }];
         return (props.groups || []).map((g) => ({ data: rows.map((r, index) => ({
           value: (r.parts[g.name] || 0) / 100, itemStyle: selectionStyle(index),
         })) }));
@@ -98,9 +99,9 @@
         if (!row || index < firstVisible.value || index > lastVisible.value) return;
         selected.value = index;
         detail.value = { title: periodTitle(row), total: row.value,
-          items: props.kind === "line" ? [] : (props.groups || []).map((g) => ({
+          items: row.parts ? (props.groups || []).map((g) => ({
             name: g.name, value: row.parts[g.name] || 0, color: safeColor(g.color),
-          })) };
+          })) : [] };
         paintSelection();
         Vue.nextTick(() => { if (detailRows.value) detailRows.value.scrollTop = 0; });
       }
@@ -148,7 +149,7 @@
           lastVisible.value = zoomWindow ? Math.floor(zoomWindow.end / 100 * (rows.length - 1) + 0.00001) : rows.length - 1;
           if (selected.value < firstVisible.value || selected.value > lastVisible.value) clearSelection();
           const data = seriesData();
-          const series = line ? [{ name: "支出", type: "line", smooth: 0.3, showSymbol: false, symbolSize: 7,
+          const series = line ? [{ name: "支出", type: "line", smooth: 0.3, smoothMonotone: "x", showSymbol: data[0].showSymbol, symbolSize: 7,
             lineStyle: { width: 3, color: "#3979df" }, itemStyle: { color: "#3979df" },
             areaStyle: { color: new echarts.graphic.LinearGradient(0, 0, 0, 1, [{ offset: 0, color: "rgba(57,121,223,.22)" }, { offset: 1, color: "rgba(57,121,223,0)" }]) },
             data: data[0].data }]
