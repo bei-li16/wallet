@@ -8,12 +8,12 @@
     />
     <meta
       name="theme-color"
-      content="#f4f6fa"
+      content="#f2f4f8"
       media="(prefers-color-scheme: light)"
     />
     <meta
       name="theme-color"
-      content="#10131b"
+      content="#0c0e13"
       media="(prefers-color-scheme: dark)"
     />
     <meta name="apple-mobile-web-app-capable" content="yes" />
@@ -81,9 +81,7 @@
             >
               <div class="page-title">
                 <div>
-                  <p class="eyebrow">
-                    {{ Number(now.slice(5, 7)) }} 月 · 日常有数
-                  </p>
+                  <p class="eyebrow">{{ todayLabel }}</p>
                   <h1 id="home-title">
                     把日常，记得清楚<span class="title-dot">。</span>
                   </h1>
@@ -100,7 +98,7 @@
                   <span class="currency">¥</span>{{ C.money(monthTotal) }}
                 </p>
                 <div class="balance-footer">
-                  <span>{{ monthRows.length }} 笔日常，认真记录</span
+                  <span>{{ monthRows.length }} 笔 · 日均 ¥{{ C.money(dailyAverage) }}</span
                   ><button @click="period='month'; periodKey=C.keyFor('month',now); reportCategory=''; setTab('report')" aria-label="查看本月报表">
                     <w-icon name="arrow"></w-icon>
                   </button>
@@ -199,7 +197,7 @@
                       ></w-icon></span
                     ><span class="record-copy"
                       ><strong>{{ e.subcategory || e.category }}</strong
-                      ><span>{{ e.note || e.category }}</span></span
+                      ><span v-if="e.note || e.subcategory">{{ e.note || e.category }}</span></span
                     ><span class="record-amount"
                       >−{{ C.money(e.amountCents) }}</span
                     ><w-icon class="record-chevron" name="arrow"></w-icon>
@@ -227,7 +225,10 @@
               </div>
               <form @submit.prevent="saveExpense" novalidate>
                 <div class="amount-entry card">
-                  <label for="amount">支出金额</label>
+                  <div class="amount-head">
+                    <label for="amount">支出金额</label
+                    ><span class="amount-caption">人民币 CNY</span>
+                  </div>
                   <div class="amount-input">
                     <span>¥</span
                     ><input
@@ -242,7 +243,6 @@
                       aria-describedby="form-error"
                     />
                   </div>
-                  <span class="amount-caption">人民币 CNY</span>
                 </div>
                 <div class="section-title">
                   <h2>选择分类</h2>
@@ -257,41 +257,41 @@
                     管理 <w-icon name="arrow"></w-icon>
                   </button>
                 </div>
-                <div class="category-grid">
-                  <button
-                    v-for="c in categories"
-                    :key="c.name"
-                    type="button"
-                    class="category-option"
-                    :class="{ active: form.category === c.name }"
-                    :aria-pressed="form.category === c.name"
-                    @click="selectCategory(c.name)"
-                  >
-                    <span
-                      class="category-symbol"
+                <div class="card category-panel">
+                  <div class="category-grid">
+                    <button
+                      v-for="c in categories"
+                      :key="c.name"
+                      type="button"
+                      class="category-option"
+                      :class="{ active: form.category === c.name }"
                       :style="{ '--category-color': c.color }"
-                      ><w-icon :name="c.icon"></w-icon></span
-                    ><span>{{ c.name }}</span
-                    ><span
-                      class="category-check"
-                      v-if="form.category === c.name"
-                      ><w-icon name="check"></w-icon
-                    ></span>
-                  </button>
-                </div>
-                <div class="chips subcategory-chips" aria-label="子分类">
-                  <button
-                    v-for="sub in formSubs"
-                    :key="sub"
-                    type="button"
-                    :class="{ active: form.subcategory === sub }"
-                    :aria-pressed="form.subcategory === sub"
-                    @click="
-                      form.subcategory = form.subcategory === sub ? '' : sub
-                    "
+                      :aria-pressed="form.category === c.name"
+                      @click="selectCategory(c.name)"
+                    >
+                      <span class="category-symbol"
+                        ><w-icon :name="c.icon"></w-icon></span
+                      ><span>{{ c.name }}</span>
+                    </button>
+                  </div>
+                  <div
+                    v-if="formSubs.length"
+                    class="chips subcategory-chips"
+                    aria-label="子分类"
                   >
-                    {{ sub }}
-                  </button>
+                    <button
+                      v-for="sub in formSubs"
+                      :key="sub"
+                      type="button"
+                      :class="{ active: form.subcategory === sub }"
+                      :aria-pressed="form.subcategory === sub"
+                      @click="
+                        form.subcategory = form.subcategory === sub ? '' : sub
+                      "
+                    >
+                      {{ sub }}
+                    </button>
+                  </div>
                 </div>
                 <div class="card form-group">
                   <label class="form-row" for="expense-date"
@@ -331,16 +331,18 @@
                 >
                   {{ formError }}
                 </p>
-                <button
-                  class="primary save-button"
-                  type="submit"
-                  :disabled="busy"
-                >
-                  <w-icon name="check"></w-icon
-                  >{{
-                    busy ? "正在保存…" : editing ? "保存修改" : "保存这笔账"
-                  }}
-                </button>
+                <div class="save-bar">
+                  <button
+                    class="primary save-button"
+                    type="submit"
+                    :disabled="busy"
+                  >
+                    <w-icon name="check"></w-icon
+                    >{{
+                      busy ? "正在保存…" : editing ? "保存修改" : "保存这笔账"
+                    }}
+                  </button>
+                </div>
                 <button
                   v-if="editing"
                   type="button"
@@ -366,7 +368,6 @@
                   <p class="eyebrow">看懂每一分的去向</p>
                   <h1 id="report-title">支出报表</h1>
                 </div>
-                <span class="title-icon"><w-icon name="report"></w-icon></span>
               </div>
               <div class="segmented" aria-label="报表周期">
                 <button
@@ -386,75 +387,97 @@
               </div>
               <div class="report-toolbar">
                 <div class="period-navigation" v-if="period !== 'all'">
-                <label class="select-wrap"
-                  ><w-icon name="calendar"></w-icon
-                  ><select v-model="periodKey" aria-label="选择报表时间" :title="C.periodLabel(period, periodKey)">
-                    <option v-for="key in periodOptions" :value="key">
-                      {{ C.periodLabel(period, key) }}
-                    </option></select
-                  ><w-icon name="down"></w-icon></label
-                >
-                <div class="period-controls" aria-label="切换报表周期">
-                  <button type="button" @click="stepReport(-1)" :disabled="!reportPrevious" aria-label="查看报表上一周期" title="上一周期"><w-icon name="back"></w-icon></button>
-                  <button type="button" @click="stepReport(1)" :disabled="!reportNext" aria-label="查看报表下一周期" title="下一周期"><w-icon name="arrow"></w-icon></button>
-                </div>
-                </div><span v-else class="small-note">全部记账时间</span>
-                <div class="report-display-controls">
+                  <button type="button" class="step-button" @click="stepReport(-1)" :disabled="!reportPrevious" aria-label="查看报表上一周期" title="上一周期"><w-icon name="back"></w-icon></button>
+                  <label class="select-wrap period-select">
+                    <span class="select-value">{{ C.periodLabel(period, periodKey) }}</span><w-icon name="down"></w-icon>
+                    <select v-model="periodKey" aria-label="选择报表时间" :title="C.periodLabel(period, periodKey)">
+                      <option v-for="key in periodOptions" :value="key">
+                        {{ C.periodLabel(period, key) }}
+                      </option>
+                    </select>
+                  </label>
+                  <button type="button" class="step-button" @click="stepReport(1)" :disabled="!reportNext" aria-label="查看报表下一周期" title="下一周期"><w-icon name="arrow"></w-icon></button>
+                </div><span v-else class="period-all"><w-icon name="calendar"></w-icon>全部记账时间</span>
                 <label class="select-wrap report-category-select">
-                  <w-icon name="grid"></w-icon>
+                  <w-icon name="grid"></w-icon><span class="select-value">{{ reportCategory || "全部分类" }}</span><w-icon name="down"></w-icon>
                   <select v-model="reportCategory" aria-label="选择报表大分类" :title="reportCategory || '全部分类'">
                     <option value="">全部分类</option>
                     <option v-for="category in categories" :key="category.name" :value="category.name">{{ category.name }}</option>
                   </select>
-                  <w-icon name="down"></w-icon>
                 </label>
-                <div class="chart-switch" role="group" aria-label="图表类型">
-                  <button
-                    :class="{ active: chartType === 'pie' }"
-                    :aria-pressed="chartType === 'pie'"
-                    aria-label="饼图"
-                    title="饼图"
-                    @click="chartType = 'pie'"
-                  >
-                    <w-icon name="pie"></w-icon></button
-                  ><button
-                    :class="{ active: chartType === 'bar' }"
-                    :aria-pressed="chartType === 'bar'"
-                    aria-label="柱状图"
-                    title="柱状图"
-                    @click="chartType = 'bar'"
-                  >
-                    <w-icon name="bars"></w-icon>
-                  </button>
-                  <button
-                    :class="{ active: chartType === 'line' }"
-                    :aria-pressed="chartType === 'line'"
-                    aria-label="曲线图"
-                    title="曲线图"
-                    @click="chartType = 'line'"
-                  >
-                    <w-icon name="trend"></w-icon>
-                  </button>
-                </div>
-                </div>
               </div>
               <article class="card report-card">
                 <div class="report-card-heading">
-                  <button
-                    v-if="reportCategory"
-                    class="text-button"
-                    @click="reportCategory = ''"
-                  >
-                    <w-icon name="back"></w-icon>全部分类</button
-                  ><span v-else class="muted">本期总支出</span
-                  ><span v-if="reportCategory" class="category-breadcrumb">{{
-                    reportCategory
-                  }}</span>
+                  <div class="report-card-label">
+                    <button
+                      v-if="reportCategory"
+                      class="text-button"
+                      @click="reportCategory = ''"
+                    >
+                      <w-icon name="back"></w-icon>全部分类</button
+                    ><span v-else>本期总支出</span
+                    ><span v-if="reportCategory" class="category-breadcrumb">{{
+                      reportCategory
+                    }}</span>
+                  </div>
+                  <div class="chart-switch" role="group" aria-label="图表类型">
+                    <button
+                      :class="{ active: chartType === 'pie' }"
+                      :aria-pressed="chartType === 'pie'"
+                      aria-label="饼图"
+                      title="饼图"
+                      @click="chartType = 'pie'"
+                    >
+                      <w-icon name="pie"></w-icon></button
+                    ><button
+                      :class="{ active: chartType === 'bar' }"
+                      :aria-pressed="chartType === 'bar'"
+                      aria-label="柱状图"
+                      title="柱状图"
+                      @click="chartType = 'bar'"
+                    >
+                      <w-icon name="bars"></w-icon>
+                    </button>
+                    <button
+                      :class="{ active: chartType === 'line' }"
+                      :aria-pressed="chartType === 'line'"
+                      aria-label="曲线图"
+                      title="曲线图"
+                      @click="chartType = 'line'"
+                    >
+                      <w-icon name="trend"></w-icon>
+                    </button>
+                  </div>
                 </div>
                 <p class="report-amount">
                   <small>¥</small>{{ C.money(reportTotal) }}
                 </p>
-                <p class="comparison">{{ comparison }}</p>
+                <div class="comparison-row">
+                  <p
+                    class="comparison"
+                    :class="{ up: comparison.includes('增加'), down: comparison.includes('减少') }"
+                  >
+                    {{ comparison }}
+                  </p>
+                  <div v-if="period !== 'all'" class="compare-switch" role="group" aria-label="比较方式">
+                    <button
+                      :class="{ active: compareMode === 'previous' }"
+                      :aria-pressed="compareMode === 'previous'"
+                      title="与上一周期整期比较"
+                      @click="compareMode = 'previous'"
+                    >
+                      较上期</button
+                    ><button
+                      :class="{ active: compareMode === 'same' }"
+                      :aria-pressed="compareMode === 'same'"
+                      title="与上一周期相同天数比较"
+                      @click="compareMode = 'same'"
+                    >
+                      同期
+                    </button>
+                  </div>
+                </div>
+                <p v-if="comparisonNote" class="comparison-note">{{ comparisonNote }}</p>
                 <div v-if="!reportRows.length" class="chart-empty">
                   <w-icon :name="chartType === 'line' ? 'trend' : chartType === 'bar' ? 'bars' : 'pie'"></w-icon>
                   <p>这个时间段还没有支出</p>
@@ -518,30 +541,38 @@
                   :disabled="!!reportCategory"
                   class="breakdown-row"
                 >
-                  <span class="rank">{{ String(i + 1).padStart(2, "0") }}</span>
+                  <span
+                    v-if="!reportCategory"
+                    class="category-symbol"
+                    :style="{ '--category-color': g.color }"
+                    ><w-icon :name="categoryInfo(g.name).icon"></w-icon></span
+                  ><span v-else class="rank" :style="{ '--rank-color': g.color }">{{ i + 1 }}</span>
                   <div class="breakdown-main">
-                    <div>
+                    <div class="breakdown-line">
                       <strong>{{ g.name }}</strong
-                      ><span>¥{{ C.money(g.value) }}</span>
+                      ><span class="breakdown-amount">¥{{ C.money(g.value) }}</span>
                     </div>
-                    <div class="breakdown-progress">
-                      <span
-                        :style="{
-                          width:
-                            (reportTotal ? (g.value / reportTotal) * 100 : 0) +
-                            '%',
-                          background: g.color,
-                        }"
-                      ></span>
+                    <div class="breakdown-line">
+                      <div class="breakdown-progress">
+                        <span
+                          :style="{
+                            width:
+                              (reportTotal ? (g.value / reportTotal) * 100 : 0) +
+                              '%',
+                            background: g.color,
+                          }"
+                        ></span>
+                      </div>
+                      <span class="percentage"
+                        >{{
+                          reportTotal
+                            ? ((g.value / reportTotal) * 100).toFixed(1)
+                            : 0
+                        }}%</span
+                      >
                     </div>
                   </div>
-                  <span class="percentage"
-                    >{{
-                      reportTotal
-                        ? ((g.value / reportTotal) * 100).toFixed(1)
-                        : 0
-                    }}%</span
-                  >
+                  <w-icon v-if="!reportCategory" class="row-chevron" name="arrow"></w-icon>
                 </button>
                 <p v-if="!reportGroups.length" class="empty-inline">
                   暂无分类数据
@@ -559,7 +590,6 @@
                   <p class="eyebrow">发现你的消费节奏</p>
                   <h1 id="trend-title">日常趋势</h1>
                 </div>
-                <span class="title-icon"><w-icon name="trend"></w-icon></span>
               </div>
               <div class="segmented" aria-label="趋势周期">
                 <button
@@ -576,15 +606,14 @@
                 </button>
               </div>
               <div class="period-navigation trend-navigation">
-                <label class="select-wrap"><span class="small-note">截至</span>
+                <button type="button" class="step-button" @click="stepTrend(-1)" :disabled="!trendPrevious" aria-label="查看趋势上一周期" title="上一周期"><w-icon name="back"></w-icon></button>
+                <label class="select-wrap period-select">
+                  <span class="select-prefix">截至</span><span class="select-value">{{ C.periodLabel(trendType, trendKey) }}</span><w-icon name="down"></w-icon>
                   <select v-model="trendKey" aria-label="选择趋势截止周期" :title="C.periodLabel(trendType, trendKey)">
                     <option v-for="key in trendOptions" :key="key" :value="key">{{ C.periodLabel(trendType, key) }}</option>
-                  </select><w-icon name="down"></w-icon>
+                  </select>
                 </label>
-                <div class="period-controls" aria-label="切换趋势周期">
-                  <button type="button" @click="stepTrend(-1)" :disabled="!trendPrevious" aria-label="查看趋势上一周期" title="上一周期"><w-icon name="back"></w-icon></button>
-                  <button type="button" @click="stepTrend(1)" :disabled="!trendNext" aria-label="查看趋势下一周期" title="下一周期"><w-icon name="arrow"></w-icon></button>
-                </div>
+                <button type="button" class="step-button" @click="stepTrend(1)" :disabled="!trendNext" aria-label="查看趋势下一周期" title="下一周期"><w-icon name="arrow"></w-icon></button>
               </div>
               <article class="card trend-card">
                 <div class="trend-metrics">
@@ -626,17 +655,16 @@
               <div class="section-title annual-heading">
                 <h2>年度支出画像</h2>
                 <div class="period-navigation">
-                <label class="select-wrap compact"
-                  ><select v-model="annualYear" aria-label="年度支出年份" :title="annualYear + '年'">
-                    <option v-for="year in annualYears" :value="year">
-                      {{ year }} 年
-                    </option></select
-                  ><w-icon name="down"></w-icon
-                ></label>
-                <div class="period-controls" aria-label="切换年度支出年份">
-                  <button type="button" @click="stepAnnual(-1)" :disabled="!annualPrevious" aria-label="查看上一年年度支出" title="上一年"><w-icon name="back"></w-icon></button>
-                  <button type="button" @click="stepAnnual(1)" :disabled="!annualNext" aria-label="查看下一年年度支出" title="下一年"><w-icon name="arrow"></w-icon></button>
-                </div>
+                  <button type="button" class="step-button" @click="stepAnnual(-1)" :disabled="!annualPrevious" aria-label="查看上一年年度支出" title="上一年"><w-icon name="back"></w-icon></button>
+                  <label class="select-wrap period-select">
+                    <span class="select-value">{{ annualYear }} 年</span><w-icon name="down"></w-icon>
+                    <select v-model="annualYear" aria-label="年度支出年份" :title="annualYear + '年'">
+                      <option v-for="year in annualYears" :value="year">
+                        {{ year }} 年
+                      </option>
+                    </select>
+                  </label>
+                  <button type="button" class="step-button" @click="stepAnnual(1)" :disabled="!annualNext" aria-label="查看下一年年度支出" title="下一年"><w-icon name="arrow"></w-icon></button>
                 </div>
               </div>
               <article class="card annual-card">
@@ -688,8 +716,7 @@
               @click="setTab(t.id)"
             >
               <span class="tab-icon"><w-icon :name="t.icon"></w-icon></span
-              ><span>{{ t.label }}</span
-              ><i v-if="tab === t.id"></i>
+              ><span>{{ t.label }}</span>
             </button>
           </nav>
         </div>
@@ -822,7 +849,7 @@
                     (cacheReady
                       ? "离线资源已就绪 · 无网络也可以使用"
                       : "正在准备离线资源…")
-                  }}<br />Wallet 1.6.0 · 数据仅保存在当前设备
+                  }}<br />Wallet 1.8.0 · 数据仅保存在当前设备
                 </p>
               </template>
               <template v-if="sheet === 'export'">
@@ -1082,7 +1109,7 @@
                         ></w-icon></span
                       ><span class="record-copy"
                         ><strong>{{ e.subcategory || e.category }}</strong
-                        ><span>{{ e.note || e.category }}</span></span
+                        ><span v-if="e.note || e.subcategory">{{ e.note || e.category }}</span></span
                       ><span class="record-amount"
                         >−{{ C.money(e.amountCents) }}</span
                       >

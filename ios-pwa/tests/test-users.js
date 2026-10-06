@@ -343,6 +343,33 @@ test('JSON exports and sharing stay complete, filenames sanitize user names and 
   assert.deepEqual(C.readBackup(await shared.files[0].text()), u.state.value);
 });
 
+test('report comparison switches between the whole previous period and the same elapsed span', async () => {
+  const h=harness(), u=h.ui; await u.boot(); u.now.value='2026-10-06';
+  u.state.value.expenses=[
+    C.normalizeRecord({id:'sep-early',date:'2026-09-03',amountCents:1000,category:'交通',subcategory:'停车'}),
+    C.normalizeRecord({id:'sep-late',date:'2026-09-20',amountCents:3000,category:'交通',subcategory:'停车'}),
+    C.normalizeRecord({id:'oct',date:'2026-10-02',amountCents:1500,category:'交通',subcategory:'停车'}),
+    C.normalizeRecord({id:'oct-later',date:'2026-10-20',amountCents:500,category:'餐饮',subcategory:'午餐'}),
+  ];
+  const ledger=C.clone(u.state.value);
+  u.period.value='month'; u.periodKey.value='2026-10';
+  assert.equal(u.compareMode.value,'previous');
+  assert.equal(u.comparison.value,'较上期减少 50.0%'); assert.equal(u.comparisonNote.value,'整期对比 2026年9月');
+  u.compareMode.value='same';
+  assert.equal(u.comparison.value,'较上月同期增加 50.0%'); assert.equal(u.comparisonNote.value,'10/1–10/6 对比 9/1–9/6');
+  assert.equal(u.reportTotal.value,2000,'the headline total still covers the whole month');
+  u.reportCategory.value='餐饮'; assert.equal(u.comparison.value,'本期与上月同期均无支出');
+  u.reportCategory.value=''; u.stepReport(-1);
+  assert.equal(u.comparison.value,'上期无支出','a finished month compares whole periods in both modes');
+  assert.equal(u.comparisonNote.value,'整期对比 2026年8月');
+  u.period.value='week'; u.periodKey.value=C.keyFor('week','2026-10-06');
+  assert.equal(u.comparisonNote.value,'10/5–10/6 对比 9/28–9/29');
+  u.period.value='year'; u.periodKey.value='2026';
+  assert.equal(u.comparisonNote.value,'1/1–10/6 对比 2025/1/1–10/6');
+  u.period.value='all'; assert.equal(u.comparison.value,'记录每一笔，了解每一分'); assert.equal(u.comparisonNote.value,'');
+  assert.deepEqual(u.state.value,ledger);
+});
+
 test('report arrows include empty periods, refresh totals and comparisons, and preserve category/type', async () => {
   const h=harness(), u=h.ui; await u.boot(); u.now.value='2026-10-03';
   u.state.value.expenses=[
@@ -502,4 +529,12 @@ test('actual Vue report controls select curves/categories and expose both all-ti
     control(label).props.onClick(); assert.equal(control(label).props['aria-pressed'],true);
     assert.equal(nodes().some(n=>n.props?.class==='chips centered-chips'),label!=='饼图');
   }
+  assert.equal(control('比较方式'),undefined,'all-time reports have no previous period to compare');
+  u.period.value='month'; u.periodKey.value=C.keyFor('month',u.now.value);
+  const switches=()=>flatten(control('比较方式')).filter(n=>n.type==='button');
+  assert.deepEqual(Array.from(switches(),b=>b.props['aria-pressed']),[true,false]);
+  switches()[1].props.onClick(); assert.equal(u.compareMode.value,'same');
+  assert.deepEqual(Array.from(switches(),b=>b.props['aria-pressed']),[false,true]);
+  assert.ok(nodes().some(n=>n.props?.class==='comparison-note'));
+  switches()[0].props.onClick(); assert.equal(u.compareMode.value,'previous');
 });

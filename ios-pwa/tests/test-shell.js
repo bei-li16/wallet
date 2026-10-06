@@ -29,6 +29,12 @@ test('manifest installation identity is relative and PNG dimensions match its ic
   }
   const apple = fs.readFileSync(path.join(root, 'icons/apple-touch-icon.png')); assert.equal(apple.readUInt32BE(16), 180);
 });
+test('settings shows the same release version as the cached shell', () => {
+  const html = fs.readFileSync(path.join(root, 'index.html'), 'utf8');
+  const shown = html.match(/Wallet (\d+\.\d+\.\d+) · 数据仅保存在当前设备/);
+  assert.ok(shown, 'settings footnote version not found');
+  assert.ok(vm.runInContext('VERSION', ctx).startsWith(shown[1] + '-'), 'update the settings version with sw.js VERSION');
+});
 test('worker ignores other apps, third-party requests, and financial data files', () => {
   for (const url of ['https://example.test/other-app/', 'https://elsewhere.test/app.js', base + 'personal-backup.json', base + 'expenses.csv']) {
     let intercepted = false;

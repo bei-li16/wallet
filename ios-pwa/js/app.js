@@ -40,6 +40,13 @@
         C.within(state.value.expenses, C.range("month", "", now.value)),
       );
       const monthTotal = computed(() => C.sum(monthRows.value));
+      const dailyAverage = computed(() =>
+        Math.round(monthTotal.value / Number(now.value.slice(8, 10))),
+      );
+      const todayLabel = computed(() => {
+        const day = new Date(now.value + "T00:00:00Z").getUTCDay();
+        return `${Number(now.value.slice(5, 7))}月${Number(now.value.slice(8, 10))}日 · 星期${"日一二三四五六"[day]}`;
+      });
       const summary = computed(() => [
         {
           name: "今日",
@@ -409,10 +416,12 @@
           ))
         )
           return;
+        const wasEditing = !!editing.value;
         editing.value = null;
         form.value = blankForm();
         formError.value = "";
-        setTab("home");
+        // "清空" keeps the user on the add page; only leaving an edit returns home.
+        if (wasEditing) setTab("home");
       }
       async function remove(ids) {
         const target = store;
@@ -550,18 +559,47 @@
           reportCategory.value,
         ),
       );
+      // "previous" compares whole periods; "same" compares an in-progress period
+      // with the same elapsed span of the previous one. The choice is a device preference.
+      const compareKey = databaseName + ":compare-mode";
+      let savedCompare = null;
+      try { savedCompare = localStorage.getItem(compareKey); } catch { /* Optional preference. */ }
+      const compareMode = ref(savedCompare === "same" ? "same" : "previous");
+      watch(compareMode, (mode) => {
+        try { localStorage.setItem(compareKey, mode); } catch { /* Keep the choice for this session. */ }
+      });
+      const compareSpan = computed(() =>
+        compareMode.value === "same" ? C.sameSpan(period.value, periodKey.value, now.value) : null,
+      );
       const comparison = computed(() => {
-        const previous = C.previous(period.value, periodKey.value);
+        // Finished or future periods have no partial span, so both modes compare whole periods.
+        const span = compareSpan.value?.partial ? compareSpan.value : null;
+        const previous = span ? span.previous : C.previous(period.value, periodKey.value);
         if (!previous) return "记录每一笔，了解每一分";
-        const value = C.sum(
-          C.within(state.value.expenses, previous).filter(
+        const total = (r) => C.sum(
+          C.within(state.value.expenses, r).filter(
             (e) => !reportCategory.value || e.category === reportCategory.value,
           ),
         );
+        const value = total(previous);
+        const current = span ? total(span.current) : reportTotal.value;
+        const name = span
+          ? { week: "上周", month: "上月", year: "去年" }[period.value] + "同期"
+          : "上期";
         if (!value)
-          return reportTotal.value ? "上期无支出" : "本期与上期均无支出";
-        const change = ((reportTotal.value - value) / value) * 100;
-        return `较上期${change >= 0 ? "增加" : "减少"} ${Math.abs(change).toFixed(1)}%`;
+          return current ? `${name}无支出` : `本期与${name}均无支出`;
+        const change = ((current - value) / value) * 100;
+        return `较${name}${change >= 0 ? "增加" : "减少"} ${Math.abs(change).toFixed(1)}%`;
+      });
+      const comparisonNote = computed(() => {
+        if (period.value === "all") return "";
+        const span = compareSpan.value;
+        if (span?.partial) {
+          const year = span.current.start.slice(0, 4);
+          return `${C.spanLabel(span.current, year)} 对比 ${C.spanLabel(span.previous, year)}`;
+        }
+        const key = C.adjacentPeriod(period.value, periodKey.value, -1);
+        return key ? `整期对比 ${C.periodLabel(period.value, key)}` : "";
       });
       function drill(name) {
         if (!reportCategory.value && categories.some((c) => c.name === name))
@@ -1081,6 +1119,8 @@
         sorted,
         monthRows,
         monthTotal,
+        dailyAverage,
+        todayLabel,
         summary,
         budgetRate,
         now,
@@ -1122,7 +1162,9 @@
         reportTotal,
         reportGroups,
         reportBuckets,
+        compareMode,
         comparison,
+        comparisonNote,
         drill,
         trendType,
         trendKey,

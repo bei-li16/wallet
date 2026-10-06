@@ -31,16 +31,38 @@ function renderChart(width, kind = 'bar', count = 27, supplied = {}) {
 }
 
 test('long bar and trend timelines keep their slider and visible selection range',()=>{
-  const chart=renderChart(300);
+  const chart=renderChart(300,'bar',60);
   assert.equal(chart.ui.zoomed.value,true); assert.equal(chart.option.dataZoom.length,1);
-  assert.equal(chart.option.dataZoom[0].endValue,26); assert.ok(chart.ui.firstVisible.value>0);
+  assert.equal(chart.option.dataZoom[0].endValue,59); assert.ok(chart.ui.firstVisible.value>0);
   const short=renderChart(300,'bar',5); assert.equal(short.ui.zoomed.value,false); assert.equal(short.option.dataZoom.length,0);
-  assert.equal(renderChart(1000).option.dataZoom.length,0);
-  assert.equal(renderChart(300,'line').option.dataZoom.length,1);
-  chart.ui.choose(26); assert.equal(chart.ui.selected.value,26);
+  assert.equal(renderChart(1000,'bar',60).option.dataZoom.length,0);
+  assert.equal(renderChart(300,'line',60).option.dataZoom.length,1);
+  chart.ui.choose(59); assert.equal(chart.ui.selected.value,59);
   chart.zoom(0,20); assert.equal(chart.ui.detail.value,null); assert.equal(chart.ui.selected.value,-1);
   chart.ui.choose(1); assert.equal(chart.ui.selected.value,1);
   chart.watchers[1](); assert.equal(chart.ui.selected.value,1); assert.equal(chart.option.dataZoom[0].end,20);
+});
+
+test('a phone-width card shows a whole month of days and 12 months without a slider',()=>{
+  for(const [kind,count] of [['bar',31],['line',31],['bar',12],['line',12]]){
+    const chart=renderChart(318,kind,count);
+    assert.equal(chart.ui.zoomed.value,false,`${kind} ${count}`); assert.equal(chart.option.dataZoom.length,0);
+    assert.equal(chart.ui.firstVisible.value,0); assert.equal(chart.ui.lastVisible.value,count-1);
+  }
+});
+
+test('long timelines open on today or the latest spending instead of empty future periods',()=>{
+  const today=C.today();
+  const days=(offset,spent)=>Array.from({length:90},(_,i)=>{const d=C.addDays(today,i+offset);
+    return {label:d.slice(5),start:d,end:d,value:spent(i)?500:0,parts:spent(i)?{交通:500}:{}};});
+  const current=renderChart(300,'bar',90,{rows:days(-60,(i)=>i===10)});
+  assert.equal(current.option.dataZoom[0].endValue,60,'window ends on today, not the last future day');
+  assert.equal(current.ui.lastVisible.value,60); assert.equal(current.ui.firstVisible.value,60-31);
+  current.ui.choose(60); assert.equal(current.ui.detail.value.title,today.replace(/-/g,'/'));
+  const past=renderChart(300,'line',90,{rows:days(-200,(i)=>i===40||i===5)});
+  assert.equal(past.option.dataZoom[0].endValue,40,'past timelines end on their latest spending');
+  const empty=renderChart(300,'bar',90,{rows:days(-200,()=>false)});
+  assert.equal(empty.option.dataZoom[0].endValue,89);
 });
 
 test('stack selection has exact totals, every category including zeros, and no drill side effect',()=>{
@@ -111,6 +133,15 @@ test('report curves show main/subcategory amounts under the selected period, inc
   assert.equal(chart.option.tooltip.show,false); assert.equal(chart.emitted.length,0);
 });
 
+test('curves stop at today instead of drawing empty future days as zero spending',()=>{
+  const today=C.today();
+  const rows=[-1,0,1,2].map(n=>{const d=C.addDays(today,n);
+    return {label:d,start:d,end:d,value:n===2?300:n===-1?100:0,parts:{}};});
+  const chart=renderChart(300,'line',4,{rows});
+  assert.deepEqual(Array.from(chart.option.series[0].data),[1,0,null,3],'a dated future expense stays visible');
+  chart.ui.choose(1); assert.equal(chart.ui.detail.value.total,0);
+});
+
 test('a single month/year curve and a zoomed single period retain a visible data point',()=>{
   const record=C.normalizeRecord({id:'one',date:'2026-10-02',amountCents:19900,category:'AI',subcategory:'订阅'});
   for(const granularity of ['month','year']){
@@ -150,35 +181,37 @@ test('vendored ECharts renders selection and preserves zoom using its real SVG r
   };
   vm.runInContext(fs.readFileSync(path.join(__dirname,'../js/charts.js'),'utf8'),context);
   const rows=C.buckets([
-    C.normalizeRecord({id:'first',date:'2024-06-01',amountCents:12345,category:'交通',subcategory:'停车'}),
+    C.normalizeRecord({id:'first',date:'2022-01-01',amountCents:12345,category:'交通',subcategory:'停车'}),
     C.normalizeRecord({id:'last',date:'2026-09-01',amountCents:54321,category:'交通',subcategory:'加油'}),
   ],'all','');
+  const last=rows.length-1; assert.equal(last,56);
   const props={kind:'bar',visible:true,rows,groups:[{name:'交通',color:'#3979df',value:66666}]};
   const ui=context.window.WalletChart.setup(props,{emit(){}});
   ui.canvas.value={clientWidth:300,clientHeight:250}; ui.panel.value={offsetWidth:180}; mounted();
   try {
-    ui.choose(27); assert.equal(ui.detail.value.total,54321);
+    assert.equal(ui.zoomed.value,true); assert.equal(ui.lastVisible.value,last);
+    ui.choose(last); assert.equal(ui.detail.value.total,54321);
     const svg=chart.renderToSVGString(); assert.match(svg,/2026-09/); assert.match(svg,/#3979df/);
     const selectedShape=chart.getOption().graphic[0].elements.find(g=>g.type==='rect');
-    const pixel=chart.convertToPixel({xAxisIndex:0},27);
+    const pixel=chart.convertToPixel({xAxisIndex:0},last);
     assert.ok(Math.abs(selectedShape.shape.x+selectedShape.shape.width/2-pixel)<0.01);
     assert.ok(selectedShape.shape.height>10); assert.ok(Number.isFinite(parseFloat(ui.panelStyle.value.marginLeft)));
     chart.dispatchAction({type:'dataZoom',start:0,end:20});
     assert.equal(ui.detail.value,null);
     chart.getZr().trigger('click',{offsetX:chart.convertToPixel({xAxisIndex:0},0),offsetY:100});
-    assert.equal(ui.detail.value.total,12345); assert.equal(ui.detail.value.title,'2024年6月');
-    ui.choose(1); assert.equal(ui.detail.value.total,0); assert.ok(chart.renderToSVGString().includes('2024-07'));
+    assert.equal(ui.detail.value.total,12345); assert.equal(ui.detail.value.title,'2022年1月');
+    ui.choose(1); assert.equal(ui.detail.value.total,0); assert.ok(chart.renderToSVGString().includes('2022-02'));
     const range=chart.getOption().dataZoom[0]; assert.equal(range.start,0); assert.equal(range.end,20);
     viewportWidth=375; ui.canvas.value.clientWidth=375; watchers[1]();
     assert.equal(chart.getWidth(),375); assert.equal(ui.selected.value,1);
     assert.equal(chart.getOption().dataZoom[0].end,20);
-    props.kind='line'; watchers[0](); ui.choose(27);
+    props.kind='line'; watchers[0](); ui.choose(last);
     assert.equal(chart.getOption().series[0].type,'line');
     assert.equal(ui.detail.value.total,54321); assert.equal(ui.detail.value.items.length,1);
     assert.equal(ui.detail.value.items[0].name,'交通'); assert.equal(ui.detail.value.items[0].value,54321);
     assert.ok(chart.getOption().graphic[0].elements.some(g=>g.type==='circle'&&g.shape.r===6));
     const lineSvg=chart.renderToSVGString(); assert.ok(!lineSvg.includes('NaN')); assert.ok(!lineSvg.includes('undefined'));
-    chart.dispatchAction({type:'dataZoom',startValue:27,endValue:27});
+    chart.dispatchAction({type:'dataZoom',startValue:last,endValue:last});
     assert.equal(chart.getOption().series[0].showSymbol,true);
     props.rows=rows.slice(-1); watchers[0]();
     assert.equal(chart.getOption().series[0].showSymbol,true); assert.equal(chart.getOption().series[0].data.length,1);

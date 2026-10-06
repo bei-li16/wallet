@@ -3,6 +3,20 @@
   const escapeHTML = (value) => String(value ?? "").replace(/[&<>"']/g,
     (char) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[char]);
   const safeColor = (color) => typeof color === "string" && /^#[0-9a-f]{3,8}$/i.test(color) ? color : "#3979df";
+  const withAlpha = (hex, alpha) => {
+    let h = hex.slice(1);
+    if (h.length < 6) h = [...h.slice(0, 3)].map((c) => c + c).join("");
+    return `rgba(${[0, 2, 4].map((i) => parseInt(h.slice(i, i + 2), 16)).join(",")},${alpha})`;
+  };
+  // Each period needs ~8px, so a full month of days or 12 months fits a phone-width card.
+  const SLOT = 8;
+  function latestIndex(rows) {
+    const today = C.today();
+    const current = rows.findIndex((r) => r.start && r.end && r.start <= today && today <= r.end);
+    let spent = -1;
+    rows.forEach((r, i) => { if (r.value) spent = i; });
+    return current < 0 && spent < 0 ? rows.length - 1 : Math.max(current, spent);
+  }
   function periodTitle(row) {
     if (!row.start || !row.end) return row.label;
     if (row.start === row.end) return row.start.replace(/-/g, "/");
@@ -43,6 +57,20 @@
       const dockStyle = Vue.ref({}), panelStyle = Vue.ref({});
       let chart, observer, zoomWindow;
       const media = matchMedia("(prefers-color-scheme: dark)");
+      // Read the stylesheet's chart tokens so charts follow the light/dark theme.
+      function palette() {
+        const dark = media.matches;
+        const colors = { accent: "#3979df", axis: dark ? "#989ca9" : "#8b909c", grid: dark ? "#303441" : "#edf0f5",
+          surface: dark ? "#252936" : "#ffffff", text: dark ? "#ffffff" : "#202536" };
+        if (typeof getComputedStyle !== "function" || typeof document === "undefined") return colors;
+        const style = getComputedStyle(document.documentElement);
+        for (const [key, name] of [["accent", "--chart-accent"], ["axis", "--chart-axis"], ["grid", "--chart-grid"], ["surface", "--surface"], ["text", "--text"]]) {
+          const value = style.getPropertyValue(name).trim();
+          if (/^#[0-9a-f]{3,8}$/i.test(value)) colors[key] = value;
+        }
+        return colors;
+      }
+      let colors = palette();
       function layoutDetail() {
         if (!detail.value || !panel.value) return;
         const x = chart.convertToPixel({ xAxisIndex: 0 }, selected.value);
@@ -56,8 +84,9 @@
         return { opacity: selected.value < 0 || index === selected.value ? 1 : 0.4 };
       }
       function seriesData() {
-        const rows = props.rows || [];
-        if (props.kind === "line") return [{ data: rows.map((r) => r.value / 100),
+        const rows = props.rows || [], today = C.today();
+        // Stop the curve at today: empty future periods are not "zero spending".
+        if (props.kind === "line") return [{ data: rows.map((r) => r.start > today && !r.value ? null : r.value / 100),
           showSymbol: rows.length === 1 || firstVisible.value === lastVisible.value }];
         return (props.groups || []).map((g) => ({ data: rows.map((r, index) => ({
           value: (r.parts[g.name] || 0) / 100, itemStyle: selectionStyle(index),
@@ -73,22 +102,22 @@
           if ([x, baseline, top].every(Number.isFinite)) {
             if (props.kind === "bar") {
               const neighbor = chart.convertToPixel({ xAxisIndex: 0 }, selected.value === lastVisible.value ? selected.value - 1 : selected.value + 1);
-              const width = Math.min(28, Number.isFinite(neighbor) ? Math.abs(neighbor - x) * 0.8 : 28);
+              const width = Math.max(8, Math.min(28, Number.isFinite(neighbor) ? Math.abs(neighbor - x) * 0.8 + 6 : 28));
               graphics.push({ type: "rect", silent: true, z: 10,
                 shape: { x: x - width / 2, y: top - 4, width, height: Math.max(2, baseline - top) + 8, r: 5 },
-                style: { fill: "transparent", stroke: "#3979df", lineWidth: 2 } });
+                style: { fill: "transparent", stroke: colors.accent, lineWidth: 2 } });
             } else {
               graphics.push({ type: "circle", silent: true, z: 10, shape: { cx: x, cy: top, r: 6 },
-                style: { fill: media.matches ? "#252936" : "#fff", stroke: "#3979df", lineWidth: 3 } });
+                style: { fill: colors.surface, stroke: colors.accent, lineWidth: 3 } });
             }
-            graphics.push({ type: "circle", silent: true, z: 10, shape: { cx: x, cy: baseline + 5, r: 3 }, style: { fill: "#3979df" } });
+            graphics.push({ type: "circle", silent: true, z: 10, shape: { cx: x, cy: baseline + 5, r: 3 }, style: { fill: colors.accent } });
             graphics.push({ type: "text", silent: true, z: 10,
               style: { text: row.label, x, y: baseline + 10, align: "center", verticalAlign: "top",
-                font: "600 10px -apple-system, sans-serif", fill: "#3979df",
-                backgroundColor: media.matches ? "#252936" : "#fff", padding: [2, 4], borderRadius: 4 } });
+                font: "600 11px -apple-system, BlinkMacSystemFont, sans-serif", fill: "#fff",
+                backgroundColor: colors.accent, padding: [3, 6], borderRadius: 8 } });
             graphics.push({ type: "line", silent: true, z: 0,
-              shape: { x1: x, x2: x, y1: baseline + 28, y2: canvas.value.clientHeight || 250 },
-              style: { stroke: "#3979df", lineWidth: 1, opacity: 0.35 } });
+              shape: { x1: x, x2: x, y1: baseline + 30, y2: canvas.value.clientHeight || 250 },
+              style: { stroke: colors.accent, lineWidth: 1, opacity: 0.35 } });
           }
         }
         chart.setOption({ series: seriesData(), graphic: graphics }, { replaceMerge: ["graphic"], silent: true });
@@ -126,45 +155,49 @@
             paintSelection();
           });
         }
-        const muted = media.matches ? "#989ca9" : "#8b909c", grid = media.matches ? "#303441" : "#edf0f5";
+        colors = palette();
         const base = { animationDuration: matchMedia("(prefers-reduced-motion: reduce)").matches ? 0 : 350,
-          textStyle: { fontFamily: "-apple-system, BlinkMacSystemFont, sans-serif" } };
+          textStyle: { fontFamily: "-apple-system, BlinkMacSystemFont, \"PingFang SC\", sans-serif" } };
         let option;
         if (props.kind === "pie") {
           zoomed.value = false;
           option = { ...base,
             tooltip: { renderMode: "html", trigger: "item", confine: true, className: "wallet-chart-tooltip",
-              backgroundColor: media.matches ? "#252936" : "#fff", borderWidth: 0,
-              textStyle: { color: media.matches ? "#fff" : "#202536", fontSize: 12 },
+              backgroundColor: colors.surface, borderWidth: 0,
+              textStyle: { color: colors.text, fontSize: 13 },
               formatter: (p) => `<div class="chart-tooltip-title">${escapeHTML(p.name)}</div>¥${C.money(Math.round(p.value * 100))} · ${p.percent}%` },
-            series: [{ type: "pie", radius: ["65%", "85%"], center: ["50%", "50%"],
-              avoidLabelOverlap: true, padAngle: 3, label: { show: false }, itemStyle: { borderRadius: 6 }, emphasis: { scaleSize: 3 },
+            series: [{ type: "pie", radius: ["63%", "86%"], center: ["50%", "50%"],
+              avoidLabelOverlap: true, padAngle: 2, label: { show: false }, itemStyle: { borderRadius: 7 }, emphasis: { scaleSize: 4 },
               data: (props.groups || []).map((r) => ({ name: r.name, value: r.value / 100, itemStyle: { color: safeColor(r.color) } })) }] };
         } else {
           const rows = props.rows || [], line = props.kind === "line";
-          const visibleCount = Math.max(6, Math.min(40, Math.floor((canvas.value.clientWidth - 40) / 26)));
+          const visibleCount = Math.max(6, Math.min(62, Math.floor((canvas.value.clientWidth - 40) / SLOT)));
           zoomed.value = rows.length > visibleCount;
           if (!zoomed.value) zoomWindow = undefined;
-          firstVisible.value = zoomWindow ? Math.ceil(zoomWindow.start / 100 * (rows.length - 1) - 0.00001) : zoomed.value ? rows.length - visibleCount : 0;
-          lastVisible.value = zoomWindow ? Math.floor(zoomWindow.end / 100 * (rows.length - 1) + 0.00001) : rows.length - 1;
+          // Open long timelines on today or the latest spending, not on empty future periods.
+          const end = Math.max(visibleCount - 1, latestIndex(rows)), start = end - visibleCount + 1;
+          firstVisible.value = zoomWindow ? Math.ceil(zoomWindow.start / 100 * (rows.length - 1) - 0.00001) : zoomed.value ? start : 0;
+          lastVisible.value = zoomWindow ? Math.floor(zoomWindow.end / 100 * (rows.length - 1) + 0.00001) : zoomed.value ? end : rows.length - 1;
           if (selected.value < firstVisible.value || selected.value > lastVisible.value) clearSelection();
           const data = seriesData();
-          const series = line ? [{ name: "支出", type: "line", smooth: 0.3, smoothMonotone: "x", showSymbol: data[0].showSymbol, symbolSize: 7,
-            lineStyle: { width: 3, color: "#3979df" }, itemStyle: { color: "#3979df" },
-            areaStyle: { color: new echarts.graphic.LinearGradient(0, 0, 0, 1, [{ offset: 0, color: "rgba(57,121,223,.22)" }, { offset: 1, color: "rgba(57,121,223,0)" }]) },
+          const series = line ? [{ name: "支出", type: "line", smooth: 0.35, smoothMonotone: "x", showSymbol: data[0].showSymbol, symbolSize: 7,
+            lineStyle: { width: 2.5, color: colors.accent }, itemStyle: { color: colors.accent },
+            areaStyle: { color: new echarts.graphic.LinearGradient(0, 0, 0, 1, [{ offset: 0, color: withAlpha(colors.accent, 0.24) }, { offset: 1, color: withAlpha(colors.accent, 0) }]) },
             data: data[0].data }]
-            : (props.groups || []).map((g, i) => ({ name: g.name, type: "bar", stack: "total", barMaxWidth: 22,
-              emphasis: { disabled: true }, itemStyle: { color: safeColor(g.color), borderRadius: [2, 2, 0, 0] }, data: data[i].data }));
+            : (props.groups || []).map((g, i) => ({ name: g.name, type: "bar", stack: "total", barMaxWidth: 20,
+              emphasis: { disabled: true }, itemStyle: { color: safeColor(g.color), borderRadius: [3, 3, 0, 0] }, data: data[i].data }));
           option = { ...base, tooltip: { show: false }, axisPointer: { show: false },
-            grid: { left: 4, right: 12, top: 24, bottom: zoomed.value ? 54 : 18, containLabel: true },
+            grid: { left: 2, right: line ? 18 : 10, top: 20, bottom: zoomed.value ? 56 : 22, containLabel: true },
             xAxis: { type: "category", data: rows.map((r) => r.label), boundaryGap: !line,
-              axisLine: { show: false }, axisTick: { show: false }, axisLabel: { color: muted, fontSize: 10, hideOverlap: true } },
+              axisLine: { show: false }, axisTick: { show: false }, axisLabel: { color: colors.axis, fontSize: 11, margin: 10, hideOverlap: true } },
             yAxis: { type: "value", splitNumber: 3,
-              axisLabel: { color: muted, fontSize: 10, formatter: (n) => n >= 10000 ? `${+(n / 10000).toFixed(1)}万` : n },
-              splitLine: { lineStyle: { color: grid, type: "dashed" } } },
-            dataZoom: zoomed.value ? [{ type: "slider", bottom: 16, height: 22,
-              ...(zoomWindow || { startValue: rows.length - visibleCount, endValue: rows.length - 1 }),
-              handleSize: "140%", showDataShadow: false, borderColor: grid, showDetail: false }] : [], series };
+              axisLabel: { color: colors.axis, fontSize: 11, formatter: (n) => n >= 10000 ? `${+(n / 10000).toFixed(1)}万` : n },
+              splitLine: { lineStyle: { color: colors.grid } } },
+            dataZoom: zoomed.value ? [{ type: "slider", bottom: 14, height: 20,
+              ...(zoomWindow || { startValue: start, endValue: end }),
+              handleSize: "130%", showDataShadow: false, showDetail: false, borderColor: "transparent", borderRadius: 10,
+              backgroundColor: withAlpha(colors.axis, 0.12), fillerColor: withAlpha(colors.accent, 0.16),
+              handleStyle: { color: colors.surface, borderColor: colors.accent }, moveHandleStyle: { color: withAlpha(colors.accent, 0.4) } }] : [], series };
         }
         chart.setOption(option, true);
         chart.resize();

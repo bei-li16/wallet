@@ -142,6 +142,29 @@
     const r = range(type, key);
     return range(type, keyFor(type, addDays(r.start, -1)));
   }
+  // Like-for-like comparison: an in-progress period is compared with the same
+  // weekday, day of month or month/day of the previous period; finished periods compare in full.
+  function sameSpan(type, key, now = today()) {
+    if (!["week", "month", "year"].includes(type)) return null;
+    const current = range(type, key, now), before = previous(type, key);
+    if (!(current.start <= now && now <= current.end))
+      return { current, previous: before, partial: false };
+    let end;
+    if (type === "year") {
+      end = before.start.slice(0, 4) + now.slice(4);
+      if (!validDate(end)) end = before.start.slice(0, 4) + "-02-28";
+    } else {
+      end = addDays(before.start, Math.round((Date.parse(now) - Date.parse(current.start)) / 86400000));
+      if (end > before.end) end = before.end;
+    }
+    return { current: { start: current.start, end: now }, previous: { start: before.start, end }, partial: true };
+  }
+  function spanLabel(r, year = "") {
+    const day = (s) => `${Number(s.slice(5, 7))}/${Number(s.slice(8))}`;
+    const head = (r.start.slice(0, 4) === year ? "" : r.start.slice(0, 4) + "/") + day(r.start);
+    if (r.start === r.end) return head;
+    return `${head}–${r.end.slice(0, 4) === r.start.slice(0, 4) ? "" : r.end.slice(0, 4) + "/"}${day(r.end)}`;
+  }
   function adjacentPeriod(type, key, direction) {
     if (!["week", "month", "year"].includes(type) || ![-1, 1].includes(direction)) return null;
     if (typeof key !== "string" || !({ week: /^\d{4}-W\d{2}$/, month: /^\d{4}-\d{2}$/, year: /^\d{4}$/ })[type].test(key)) return null;
@@ -572,6 +595,8 @@
     keyFor,
     range,
     previous,
+    sameSpan,
+    spanLabel,
     adjacentPeriod,
     periodLabel,
     periods,

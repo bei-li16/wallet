@@ -48,6 +48,31 @@ test("calendar validation and ISO cross-year week boundaries", () => {
   });
   assert.equal(C.range("month", "2024-02").end, "2024-02-29");
 });
+test("same-span comparison matches elapsed days, clips short months and keeps finished periods whole", () => {
+  assert.deepEqual(C.sameSpan("month", "2026-10", "2026-10-06"), {
+    current: { start: "2026-10-01", end: "2026-10-06" },
+    previous: { start: "2026-09-01", end: "2026-09-06" },
+    partial: true,
+  });
+  assert.deepEqual(C.sameSpan("month", "2026-03", "2026-03-31").previous, { start: "2026-02-01", end: "2026-02-28" });
+  assert.deepEqual(C.sameSpan("month", "2024-03", "2024-03-30").previous, { start: "2024-02-01", end: "2024-02-29" });
+  // A Wednesday compares Monday–Wednesday, including across ISO week 53.
+  assert.deepEqual(C.sameSpan("week", "2021-W01", "2021-01-06"), {
+    current: { start: "2021-01-04", end: "2021-01-06" },
+    previous: { start: "2020-12-28", end: "2020-12-30" },
+    partial: true,
+  });
+  assert.deepEqual(C.sameSpan("year", "2026", "2026-10-06").previous, { start: "2025-01-01", end: "2025-10-06" });
+  assert.deepEqual(C.sameSpan("year", "2028", "2028-02-29").previous, { start: "2027-01-01", end: "2027-02-28" });
+  assert.deepEqual(C.sameSpan("month", "2026-09", "2026-10-06"), {
+    current: C.range("month", "2026-09"), previous: C.range("month", "2026-08"), partial: false,
+  });
+  assert.equal(C.sameSpan("month", "2026-11", "2026-10-06").partial, false);
+  assert.equal(C.sameSpan("all", "", "2026-10-06"), null);
+  assert.equal(C.spanLabel({ start: "2026-09-01", end: "2026-09-06" }, "2026"), "9/1–9/6");
+  assert.equal(C.spanLabel({ start: "2025-12-29", end: "2026-01-04" }, "2026"), "2025/12/29–2026/1/4");
+  assert.equal(C.spanLabel({ start: "2026-10-01", end: "2026-10-01" }), "2026/10/1");
+});
 test("CSV round-trip preserves commas, quotation marks, multiline notes and Unicode", () => {
   const rows = [
     row({ note: '第一行,"咖啡"\r\n第二行\n第三行🍵' }),
