@@ -236,3 +236,26 @@ test('period navigation respects supported dates, rejects invalid keys and leave
   for (const delta of [0,2,-2,'1',NaN]) assert.equal(C.adjacentPeriod('month','2026-10',delta),null);
   assert.equal(C.adjacentPeriod('week',C.keyFor('week','2199-12-31'),-1),'2199-W52');
 });
+
+test('subcategory chart colours stay unique beyond eight/24 groups and separate neighbouring pie sectors', () => {
+  const channels=color=>[1,3,5].map(i=>parseInt(color.slice(i,i+2),16));
+  const distance=(a,b)=>Math.hypot(...channels(a).map((n,i)=>n-channels(b)[i]));
+  for(const count of Array.from({length:65},(_,i)=>i)){
+    const records=Array.from({length:count},(_,i)=>row({id:'color-'+i,category:'交通',subcategory:'组分'+String(i).padStart(2,'0'),amountCents:(count-i)*101}));
+    const before=C.clone(records), groups=C.breakdown(records,'交通'), colors=groups.map(g=>g.color);
+    assert.equal(new Set(colors).size,count,`${count} distinct colours required`);
+    assert.ok(colors.every(color=>/^#[0-9a-f]{6}$/.test(color)));
+    assert.deepEqual(C.breakdown([...records].reverse(),'交通'),groups,'record/import order cannot change colours');
+    assert.equal(groups.reduce((sum,g)=>sum+g.value,0),C.sum(records)); assert.deepEqual(records,before);
+    if(count>1) for(let i=0;i<count;i++) assert.ok(distance(colors[i],colors[(i+1)%count])>85,`${count} groups: neighbouring colours ${i} and ${(i+1)%count} too close`);
+  }
+});
+
+test('colour changes preserve main-category identities and deterministic equal-amount subcategory order', () => {
+  const records=C.CATEGORIES.map((c,i)=>row({id:'main-'+i,category:c.name,amountCents:101}));
+  const groups=C.breakdown(records);
+  for(const g of groups) assert.equal(g.color,C.CATEGORIES.find(c=>c.name===g.name).color);
+  const children=['停车','充电','保险','加油','过路费','未分类'].map((name,i)=>row({id:'child-'+i,category:'交通',subcategory:name==='未分类'?'':name,amountCents:101}));
+  assert.deepEqual(C.breakdown(children,'交通'),C.breakdown([...children].reverse(),'交通'));
+  assert.equal(C.breakdown([...children,...records],'交通').reduce((sum,g)=>sum+g.value,0),707);
+});

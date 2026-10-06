@@ -191,3 +191,41 @@ test('vendored ECharts renders selection and preserves zoom using its real SVG r
     assert.equal(ui.zoomed.value,false); assert.equal((chart.getOption().graphic || []).length,0);
   } finally { chart.dispose(); }
 });
+
+test('real pie/bar charts and selected details share 11 distinct subcategory colours in both themes',()=>{
+  const records=Array.from({length:11},(_,i)=>C.normalizeRecord({id:'part-'+i,date:'2026-10-05',
+    amountCents:(11-i)*101,category:'交通',subcategory:'组分'+String(i+1).padStart(2,'0')}));
+  const groups=C.breakdown(records,'交通'), rows=C.buckets(records,'year','2026','month','交通');
+  for(const dark of [false,true]) for(const kind of ['pie','bar','line']){
+    let chart,mounted;
+    const context={window:{},WalletCore:C,console,setTimeout,clearTimeout,
+      matchMedia:query=>({matches:dark&&query.includes('color-scheme'),addEventListener(){},removeEventListener(){}}),
+      ResizeObserver:class {observe(){} disconnect(){}},
+      Vue:{ref:value=>({value}),onMounted:fn=>mounted=fn,onUnmounted(){},watch(){},nextTick:fn=>fn()}};
+    vm.createContext(context);
+    vm.runInContext(fs.readFileSync(path.join(__dirname,'../js/vendor/echarts.min.js'),'utf8'),context);
+    const init=context.echarts.init;
+    context.echarts.init=()=>{
+      chart=init(null,null,{renderer:'svg',ssr:true,width:300,height:250});
+      const resize=chart.resize; chart.resize=()=>resize.call(chart,{width:300,height:250});return chart;
+    };
+    vm.runInContext(fs.readFileSync(path.join(__dirname,'../js/charts.js'),'utf8'),context);
+    const ui=context.window.WalletChart.setup({kind,visible:true,rows,groups},{emit(){}});
+    ui.canvas.value={clientWidth:300,clientHeight:250};ui.panel.value={offsetWidth:220};mounted();
+    try {
+      const series=chart.getOption().series;
+      if(kind==='pie') assert.deepEqual(Array.from(series[0].data,d=>d.itemStyle.color),groups.map(g=>g.color));
+      else {
+        if(kind==='bar') assert.deepEqual(Array.from(series,s=>s.itemStyle.color),groups.map(g=>g.color));
+        ui.choose(9);assert.equal(ui.detail.value.total,C.sum(records));
+        assert.deepEqual(Array.from(ui.detail.value.items,i=>[i.name,i.color,i.value]),groups.map(g=>[g.name,g.color,g.value]));
+      }
+      const svg=chart.renderToSVGString();assert.ok(!svg.includes('NaN'));assert.ok(!svg.includes('undefined'));
+      if(kind!=='line') for(const g of groups) assert.ok(svg.includes(g.color),`missing ${g.name} colour in ${kind}`);
+      if(process.env.WALLET_RENDER_CHART_FIXTURES==='1'&&kind!=='line'){
+        const folder=path.join(__dirname,'artifacts');fs.mkdirSync(folder,{recursive:true});
+        fs.writeFileSync(path.join(folder,`chart-colors-${kind}-${dark?'dark':'light'}.svg`),svg);
+      }
+    } finally {chart.dispose();}
+  }
+});

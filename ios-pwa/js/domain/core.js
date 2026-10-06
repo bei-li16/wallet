@@ -25,6 +25,50 @@
     AI: ["订阅", "API 用量", "其他"],
     其他: ["礼品", "捐赠", "其它"],
   };
+  // Separate chart colours from the eight main-category icon colours.
+  const CHART_COLORS = [
+    "#4c78a8", "#f28e2b", "#8c6bb1", "#2ca58d", "#de6b91", "#a3a948",
+    "#c66152", "#45a2c1", "#b97947", "#6c79cc", "#bf5f9f", "#5c9b57",
+    "#e0ab39", "#527e8c", "#a86b72", "#4f9aa0", "#cf744a", "#667a46",
+    "#aa78bd", "#3b8ac4", "#b48a38", "#798fbd", "#c25268", "#92959d",
+  ];
+  const rgb = (hex) => [1, 3, 5].map((i) => parseInt(hex.slice(i, i + 2), 16));
+  const colorDistance = (a, b) => Math.sqrt(
+    2 * (a[0] - b[0]) ** 2 + 4 * (a[1] - b[1]) ** 2 + 3 * (a[2] - b[2]) ** 2,
+  );
+  function extraChartColor(index) {
+    // Golden-angle hue stepping extends the palette instead of cycling it.
+    const h = (index * 137.508 + 25) % 360 / 60;
+    const s = [0.64, 0.78, 0.55][index % 3], l = [0.48, 0.59, 0.42][Math.floor(index / 3) % 3];
+    const c = (1 - Math.abs(2 * l - 1)) * s, x = c * (1 - Math.abs(h % 2 - 1)), m = l - c / 2;
+    const channels = h < 1 ? [c, x, 0] : h < 2 ? [x, c, 0] : h < 3 ? [0, c, x]
+      : h < 4 ? [0, x, c] : h < 5 ? [x, 0, c] : [c, 0, x];
+    return "#" + channels.map((v) => Math.round((v + m) * 255).toString(16).padStart(2, "0")).join("");
+  }
+  function chartColors(count) {
+    const colors = new Set(CHART_COLORS);
+    // Keep spare candidates so a long chart does not end with similar leftovers.
+    for (let i = 0; colors.size < count * 2; i++) colors.add(extraChartColor(i));
+    const available = [...colors].map((color) => ({ color, rgb: rgb(color), distance: Infinity }));
+    const result = [];
+    let first, previous;
+    for (let i = 0; i < count; i++) {
+      let best = 0, bestScore = -1;
+      if (previous) available.forEach((candidate, j) => {
+        candidate.distance = Math.min(candidate.distance, colorDistance(candidate.rgb, previous));
+        let adjacent = colorDistance(candidate.rgb, previous);
+        // The last and first pie sectors are neighbours too.
+        if (i === count - 1) adjacent = Math.min(adjacent, colorDistance(candidate.rgb, first));
+        const score = candidate.distance * 0.6 + adjacent * 0.4;
+        if (score > bestScore) { best = j; bestScore = score; }
+      });
+      const chosen = available.splice(best, 1)[0];
+      first ||= chosen.rgb;
+      previous = chosen.rgb;
+      result.push(chosen.color);
+    }
+    return result;
+  }
   const HEADERS = [
     "id",
     "amount",
@@ -255,16 +299,11 @@
       const name = category ? e.subcategory || "未分类" : e.category;
       map.set(name, (map.get(name) || 0) + e.amountCents);
     }
-    const colors = CATEGORIES.map((c) => c.color);
-    return [...map]
-      .map(([name, value], i) => ({
-        name,
-        value,
-        color: !category
-          ? (CATEGORIES.find((c) => c.name === name) || {}).color
-          : colors[i % colors.length],
-      }))
-      .sort((a, b) => b.value - a.value);
+    const groups = [...map].map(([name, value]) => ({ name, value }))
+      .sort((a, b) => b.value - a.value || (a.name < b.name ? -1 : a.name > b.name ? 1 : 0));
+    const colors = category ? chartColors(groups.length) : [];
+    return groups.map((g, i) => ({ ...g, color: category ? colors[i]
+      : (CATEGORIES.find((c) => c.name === g.name) || {}).color }));
   }
   function buckets(records, type, key, granularity = "month", category = "") {
     let start, end, step, label;
